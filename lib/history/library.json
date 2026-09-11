@@ -1,0 +1,8 @@
+{
+  "name": "history",
+  "version": "1.0.0",
+  "description": "Fixed-capacity ring buffer of timestamped temperature/humidity samples, with downsampling to a chart's pixel width. Pure C++17, host-testable.",
+  "build": {
+    "flags": ["-std=c++17"]
+  }
+}
