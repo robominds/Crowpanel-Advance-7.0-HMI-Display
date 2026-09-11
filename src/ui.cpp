@@ -32,6 +32,7 @@ struct Row {
     float last_temp_c = NAN;
     float last_hum    = NAN;
     bool  last_stale  = true;
+    bool  last_valid  = false;
     bool  primed      = false;
 };
 
@@ -136,12 +137,14 @@ void refresh(uint32_t now_ms) {
 
         const bool changed = !row.primed ||
                              stale != row.last_stale ||
+                             r.valid != row.last_valid ||
                              r.temperature_c != row.last_temp_c ||
                              r.humidity_pct != row.last_hum;
         if (!changed) continue;
 
         row.primed      = true;
         row.last_stale  = stale;
+        row.last_valid  = r.valid;
         row.last_temp_c = r.temperature_c;
         row.last_hum    = r.humidity_pct;
 
