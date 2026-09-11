@@ -116,6 +116,30 @@ static void test_decimal_rejects_only_whitespace(void) {
     TEST_ASSERT_FLOAT_WITHIN(kEps, 123.0f, v);
 }
 
+static void test_decimal_rejects_embedded_null(void) {
+    // PubSubClient hands over raw bytes. A truncated or corrupted packet can
+    // put a null inside the length, and strtof would stop there and report a
+    // plausible wrong number.
+    const char buf[] = {'1', '9', '\0', '.', '6'};
+    float v = 123.0f;
+    TEST_ASSERT_FALSE(parse::decimal(buf, sizeof(buf), v));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 123.0f, v);
+}
+
+static void test_decimal_rejects_hex_float_notation(void) {
+    float v = 123.0f;
+    TEST_ASSERT_FALSE(dec("0x1p0", v));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 123.0f, v);
+    TEST_ASSERT_FALSE(dec("0x1.8p3", v));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 123.0f, v);
+}
+
+static void test_decimal_still_accepts_exponent_notation(void) {
+    float v = 0.0f;
+    TEST_ASSERT_TRUE(dec("1.96e1", v));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 19.6f, v);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
 
@@ -135,6 +159,10 @@ int main(int, char**) {
     RUN_TEST(test_decimal_rejects_json);
     RUN_TEST(test_decimal_rejects_infinity);
     RUN_TEST(test_decimal_rejects_only_whitespace);
+
+    RUN_TEST(test_decimal_rejects_embedded_null);
+    RUN_TEST(test_decimal_rejects_hex_float_notation);
+    RUN_TEST(test_decimal_still_accepts_exponent_notation);
 
     return UNITY_END();
 }

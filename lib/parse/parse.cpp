@@ -39,20 +39,23 @@ bool decimal(const char* payload, size_t len, float& out) {
     if (begin == stop) return false;
     buf[stop] = '\0';
 
-    // Reject "nan" and "inf" before strtof, which accepts both. A sensor that
-    // reports NaN has failed, and a NaN in the ring buffer poisons every mean
-    // computed from it.
-    const char first = buf[begin];
-    if (!(std::isdigit(static_cast<unsigned char>(first)) || first == '-' ||
-          first == '+' || first == '.')) {
-        return false;
+    // Every byte of the trimmed payload must be one a bare decimal can
+    // contain. This rejects three things at once that strtof would otherwise
+    // accept: an embedded null byte, C99 hex notation such as "0x1p0", and
+    // the words "nan" and "inf".
+    for (size_t i = begin; i < stop; ++i) {
+        const char c = buf[i];
+        const bool permitted = std::isdigit(static_cast<unsigned char>(c)) ||
+                               c == '.' || c == '-' || c == '+' ||
+                               c == 'e' || c == 'E';
+        if (!permitted) return false;
     }
 
     char*       end = nullptr;
     const float v   = std::strtof(buf + begin, &end);
 
     if (end == buf + begin) return false;  // nothing consumed
-    if (*end != '\0') return false;        // trailing garbage
+    if (end != buf + stop) return false;   // trailing garbage
     if (!std::isfinite(v)) return false;
 
     out = v;
