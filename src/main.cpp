@@ -14,6 +14,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 
+#include <new>
+
 #include "Channel.h"
 #include "board_pins.h"
 #include "display_driver.h"
@@ -43,11 +45,15 @@ constexpr size_t OFFICE_CAPACITY =
 constexpr size_t WEATHER_CAPACITY =
     (ui::CHART_WINDOW_MS / WEATHER_INTERVAL_MS) + 8;
 
-channel::Channel g_outdoor("Maple Valley", WEATHER_STALE_MS, WEATHER_CAPACITY);
-channel::Channel g_office("Mark's Office", OFFICE_STALE_MS, OFFICE_CAPACITY);
-
-channel::Channel* g_channels[] = {&g_outdoor, &g_office};
-constexpr size_t  CHANNEL_COUNT = sizeof(g_channels) / sizeof(g_channels[0]);
+// Two channels: [0] outdoor, [1] office. Deliberately pointers filled in by
+// setup() rather than file-scope objects. Each Channel constructor allocates
+// its whole history up front - about 52 KB for the office - and a file-scope
+// object would do that during static initialisation, before Serial.begin().
+// On a module that does not carry the memory the schematic claims, that failure
+// aborts and reboots the board with nothing printed at all. Constructed inside
+// setup() the same failure is at least explicable.
+constexpr size_t  CHANNEL_COUNT           = 2;
+channel::Channel* g_channels[CHANNEL_COUNT] = {nullptr, nullptr};
 
 // Long-press anywhere toggles Celsius and Fahrenheit. Deliberately not a
 // button: the panel is meant to be read, not operated, and a stray brush
@@ -104,6 +110,26 @@ void setup() {
     delay(200);
     Serial.println("\nCrowPanel Advance 7.0 temperature display");
 
+    // Now that there is somewhere to complain to, build the channels. The
+    // nothrow new covers the Channel objects themselves; if the far larger
+    // history buffer inside one cannot be allocated the C++ runtime aborts, but
+    // with Serial already up that abort is visible on the console instead of
+    // being a silent reboot loop.
+    g_channels[0] = new (std::nothrow)
+        channel::Channel("Maple Valley", WEATHER_STALE_MS, WEATHER_CAPACITY);
+    g_channels[1] = new (std::nothrow)
+        channel::Channel("Mark's Office", OFFICE_STALE_MS, OFFICE_CAPACITY);
+    if (g_channels[0] == nullptr || g_channels[1] == nullptr) {
+        Serial.println("FATAL: out of memory allocating the channel histories");
+        Serial.printf("FATAL: needed room for %u + %u samples (~%u KB)\n",
+                      static_cast<unsigned>(WEATHER_CAPACITY),
+                      static_cast<unsigned>(OFFICE_CAPACITY),
+                      static_cast<unsigned>((WEATHER_CAPACITY + OFFICE_CAPACITY) *
+                                            sizeof(history::Sample) / 1024));
+        Serial.println("FATAL: check that the module really has 8 MB of PSRAM");
+        while (true) delay(1000);
+    }
+
     Wire.begin(board::I2C_SDA, board::I2C_SCL, board::I2C_HZ);
     delay(50);
 
@@ -130,8 +156,8 @@ void setup() {
     ui::refresh(millis());
 
     net::begin();
-    source_mqtt::begin(g_office);
-    source_weather::begin(g_outdoor);
+    source_mqtt::begin(*g_channels[1]);
+    source_weather::begin(*g_channels[0]);
 
     // Draw the first frame before the backlight comes on, so the panel lights
     // up showing the UI rather than whatever was in the buffers.

@@ -22,7 +22,8 @@
 namespace source_mqtt {
 
 // Binds the channel that incoming readings are written into. The channel must
-// outlive this module; in practice it is a file-scope object in main.cpp.
+// outlive this module; in practice it is allocated once in setup() and never
+// freed.
 void begin(channel::Channel& office);
 
 // Call every loop. Handles connection, reconnection with backoff, and message
