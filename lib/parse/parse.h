@@ -24,4 +24,23 @@ namespace parse {
 // the chart, so silence is better than a plausible-looking wrong number.
 bool decimal(const char* payload, size_t len, float& out);
 
+// One current-conditions reading from Open-Meteo.
+struct Weather {
+    float temperature_c;
+    float humidity_pct;
+};
+
+// Extracts `current.temperature_2m` and `current.relative_humidity_2m` from an
+// Open-Meteo response body.
+//
+// Temperature is Celsius because the request omits `temperature_unit`, whose
+// default is Celsius. Keep it that way: history stores Celsius throughout and
+// converts only at display time.
+//
+// Returns false and leaves `out` untouched unless BOTH fields were present and
+// numeric. A partially parsed reading is worse than none - it would show a real
+// temperature beside a humidity of zero, with nothing to indicate which is
+// which. Also returns false for the API's error body, which has no `current`.
+bool openMeteo(const char* json, size_t len, Weather& out);
+
 }  // namespace parse

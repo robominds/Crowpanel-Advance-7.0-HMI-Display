@@ -140,6 +140,80 @@ static void test_decimal_still_accepts_exponent_notation(void) {
     TEST_ASSERT_FLOAT_WITHIN(kEps, 19.6f, v);
 }
 
+// ---------------------------------------------------------------------------
+// Open-Meteo. The fixture is a real response captured on 2026-09-11.
+// ---------------------------------------------------------------------------
+
+static const char kRealResponse[] =
+    "{\"latitude\":47.37403,\"longitude\":-122.03002,"
+    "\"generationtime_ms\":0.2496,\"utc_offset_seconds\":-25200,"
+    "\"timezone\":\"America/Los_Angeles\",\"timezone_abbreviation\":\"GMT-7\","
+    "\"elevation\":150.0,\"current_units\":{\"time\":\"iso8601\","
+    "\"interval\":\"seconds\",\"temperature_2m\":\"C\","
+    "\"relative_humidity_2m\":\"%\",\"weather_code\":\"wmo code\"},"
+    "\"current\":{\"time\":\"2026-09-11T10:30\",\"interval\":900,"
+    "\"temperature_2m\":16.1,\"relative_humidity_2m\":62,"
+    "\"weather_code\":3}}";
+
+static bool om(const char* s, parse::Weather& out) {
+    return parse::openMeteo(s, std::strlen(s), out);
+}
+
+static void test_openmeteo_real_response(void) {
+    parse::Weather w{};
+    TEST_ASSERT_TRUE(om(kRealResponse, w));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 16.1f, w.temperature_c);
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 62.0f, w.humidity_pct);
+}
+
+static void test_openmeteo_minimal_object(void) {
+    parse::Weather w{};
+    TEST_ASSERT_TRUE(om("{\"current\":{\"temperature_2m\":-3.25,"
+                        "\"relative_humidity_2m\":91}}", w));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, -3.25f, w.temperature_c);
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 91.0f, w.humidity_pct);
+}
+
+static void test_openmeteo_rejects_missing_temperature(void) {
+    parse::Weather w{};
+    w.temperature_c = 99.0f;
+    TEST_ASSERT_FALSE(om("{\"current\":{\"relative_humidity_2m\":62}}", w));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 99.0f, w.temperature_c);
+}
+
+static void test_openmeteo_rejects_missing_humidity(void) {
+    parse::Weather w{};
+    TEST_ASSERT_FALSE(om("{\"current\":{\"temperature_2m\":16.1}}", w));
+}
+
+static void test_openmeteo_rejects_missing_current_object(void) {
+    parse::Weather w{};
+    TEST_ASSERT_FALSE(om("{\"latitude\":47.37,\"elevation\":150.0}", w));
+}
+
+static void test_openmeteo_rejects_truncated_response(void) {
+    parse::Weather w{};
+    TEST_ASSERT_FALSE(om("{\"current\":{\"temperature_2m\":16", w));
+}
+
+static void test_openmeteo_rejects_empty_and_null(void) {
+    parse::Weather w{};
+    TEST_ASSERT_FALSE(parse::openMeteo("", 0, w));
+    TEST_ASSERT_FALSE(parse::openMeteo(nullptr, 10, w));
+}
+
+static void test_openmeteo_rejects_api_error_body(void) {
+    parse::Weather w{};
+    TEST_ASSERT_FALSE(om("{\"error\":true,\"reason\":\"Latitude must be in "
+                         "range of -90 to 90\"}", w));
+}
+
+static void test_openmeteo_rejects_non_numeric_temperature(void) {
+    parse::Weather w{};
+    TEST_ASSERT_FALSE(om("{\"current\":{\"temperature_2m\":null,"
+                         "\"relative_humidity_2m\":62}}", w));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
 
@@ -163,6 +237,16 @@ int main(int, char**) {
     RUN_TEST(test_decimal_rejects_embedded_null);
     RUN_TEST(test_decimal_rejects_hex_float_notation);
     RUN_TEST(test_decimal_still_accepts_exponent_notation);
+
+    RUN_TEST(test_openmeteo_real_response);
+    RUN_TEST(test_openmeteo_minimal_object);
+    RUN_TEST(test_openmeteo_rejects_missing_temperature);
+    RUN_TEST(test_openmeteo_rejects_missing_humidity);
+    RUN_TEST(test_openmeteo_rejects_missing_current_object);
+    RUN_TEST(test_openmeteo_rejects_truncated_response);
+    RUN_TEST(test_openmeteo_rejects_empty_and_null);
+    RUN_TEST(test_openmeteo_rejects_api_error_body);
+    RUN_TEST(test_openmeteo_rejects_non_numeric_temperature);
 
     return UNITY_END();
 }

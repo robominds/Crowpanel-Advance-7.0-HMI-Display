@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <ArduinoJson.h>
+
 namespace parse {
 namespace {
 
@@ -59,6 +61,29 @@ bool decimal(const char* payload, size_t len, float& out) {
     if (!std::isfinite(v)) return false;
 
     out = v;
+    return true;
+}
+
+bool openMeteo(const char* json, size_t len, Weather& out) {
+    if (json == nullptr || len == 0) return false;
+
+    // The response is around 400 bytes. 2 KB leaves generous headroom for
+    // Open-Meteo adding fields without this needing a change.
+    JsonDocument doc;
+    if (deserializeJson(doc, json, len) != DeserializationError::Ok) return false;
+
+    JsonVariantConst current = doc["current"];
+    if (current.isNull()) return false;
+
+    JsonVariantConst t = current["temperature_2m"];
+    JsonVariantConst h = current["relative_humidity_2m"];
+
+    // is<float>() is false for null, for a string and for a missing key, which
+    // is exactly the set we want to reject.
+    if (!t.is<float>() || !h.is<float>()) return false;
+
+    out.temperature_c = t.as<float>();
+    out.humidity_pct  = h.as<float>();
     return true;
 }
 
