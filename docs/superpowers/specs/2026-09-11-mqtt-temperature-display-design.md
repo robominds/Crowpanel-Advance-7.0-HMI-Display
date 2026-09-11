@@ -181,15 +181,23 @@ microcontroller at 0x30, and the encoding inverted between board revisions:
 | V1.3+ | `0` brightest, `245` off | `250` |
 
 Getting it wrong gives a black screen with no error and a correctly scanning
-panel behind it. Since the board has not arrived and the revision is printed on
-the silkscreen, `panel_mcu` **tries the V1.3+ encoding first, falls back to
-V1.2, and logs which worked**, so the first boot reports the revision instead of
-appearing dead.
+panel behind it.
 
-This was flagged during design review as possibly fragile rather than clever.
-The mitigation is that the probe is confined to one module behind a compile-time
-override, so once the revision is known it can be pinned to a constant and the
-probing deleted.
+**Revised during planning.** The original intent was for `panel_mcu` to try the
+V1.3+ encoding, fall back to V1.2, and report which worked. That cannot be made
+to work: the companion microcontroller **acknowledges any byte on the I2C bus**,
+so a write cannot report whether it was understood. A probe would simply send a
+V1.3+ brightness command to a V1.2 board, which would read it as something else
+entirely.
+
+Instead the revision is a compile-time constant, `CROWPANEL_ADVANCE_REV`,
+defaulting to V1.3+ because that is current stock. At startup `panel_mcu` logs
+which revision it is driving and what to change if the screen stays dark. Once
+the silkscreen has been read, the constant is set once and never thought about
+again.
+
+This is less clever than probing and considerably more honest about what the
+hardware can tell us.
 
 ---
 
