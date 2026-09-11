@@ -77,14 +77,20 @@ void pollUnitToggle() {
     }
 }
 
-// Redraws a row's chart when its channel has gained a sample.
+// Redraws a row's chart when its channel has gained a sample. Keyed on the
+// newest sample's timestamp, not the history buffer's size: size_ stops
+// growing once the ring buffer fills, so comparing it would freeze the chart
+// after roughly twelve hours of uptime while the readout kept updating.
 void pollCharts() {
-    static size_t last_size[CHANNEL_COUNT] = {0};
+    static uint32_t last_t_ms[CHANNEL_COUNT] = {0};
+    static bool     seen[CHANNEL_COUNT]      = {false};
 
     for (size_t i = 0; i < CHANNEL_COUNT; ++i) {
-        const size_t n = g_channels[i]->history().size();
-        if (n == last_size[i]) continue;
-        last_size[i] = n;
+        const channel::Reading& r = g_channels[i]->latest();
+        if (!r.valid) continue;
+        if (seen[i] && r.t_ms == last_t_ms[i]) continue;
+        seen[i]        = true;
+        last_t_ms[i]   = r.t_ms;
         ui::updateChart(i);
     }
 }
