@@ -55,32 +55,15 @@ size_t SampleHistory::downsample(uint32_t window_ms, Bucket* out, size_t bucket_
     if (bucket_count == 0) return 0;
 
     for (size_t i = 0; i < bucket_count; ++i) out[i] = Bucket{0.0f, 0.0f, false};
-
-    // Every bucket stays invalid rather than filling the first MAX_BUCKETS of
-    // them: a silently truncated chart is indistinguishable from a real one.
-    if (bucket_count > MAX_BUCKETS) return 0;
     if (size_ == 0) return 0;
 
     // Counts live in their own array rather than being folded into the output so
     // that bucketing depends only on t_ms. A streaming pass could keep the count
     // in a local, but only by assuming samples arrive in time order - and a
     // sensor read that straggles would then silently corrupt a mean.
-    //
-    // Static, not local vectors: three vectors totalling ~7.6 KB, allocated
-    // and freed on every call, churn the internal SRAM heap that the network
-    // stack shares - none of them is large enough to be pushed out to
-    // PSRAM by the allocator's size threshold. Only
-    // the first bucket_count entries of each are ever touched, and they are
-    // cleared here rather than relying on what the previous call left behind.
-    // This is what makes downsample() non-reentrant; see the header.
-    static uint32_t counts[MAX_BUCKETS];
-    static double   sum_t[MAX_BUCKETS];
-    static double   sum_h[MAX_BUCKETS];
-    for (size_t i = 0; i < bucket_count; ++i) {
-        counts[i] = 0;
-        sum_t[i]  = 0.0;
-        sum_h[i]  = 0.0;
-    }
+    std::vector<uint32_t> counts(bucket_count, 0);
+    std::vector<double>   sum_t(bucket_count, 0.0);
+    std::vector<double>   sum_h(bucket_count, 0.0);
 
     const uint32_t anchor = newest().t_ms;
 

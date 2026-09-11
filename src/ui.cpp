@@ -17,11 +17,6 @@ namespace {
 
 constexpr int STATUS_H = 40;
 
-// downsample() refuses more buckets than this; catch it here rather than
-// finding an empty chart on the panel.
-static_assert(CHART_POINTS <= history::SampleHistory::MAX_BUCKETS,
-              "CHART_POINTS exceeds what SampleHistory::downsample can bucket");
-
 struct Row {
     channel::Channel* ch        = nullptr;
     lv_obj_t*         panel     = nullptr;

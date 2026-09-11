@@ -50,25 +50,6 @@ class SampleHistory {
         bool  valid;
     };
 
-    // Largest bucket_count downsample() will accept. Its scratch arrays are
-    // static rather than allocated per call - on the panel downsample() runs
-    // every ten seconds and the blocks are small enough to land in the internal
-    // SRAM the Wi-Fi stack needs - and a static needs a compile-time bound. One
-    // bucket per pixel of the widest panel this firmware drives is the most any
-    // caller can sensibly ask for; the chart itself uses 380 of them.
-    static constexpr size_t MAX_BUCKETS = 800;
-
-    // Averages the samples within `window_ms` of the newest one into
-    // `bucket_count` buckets, oldest-left, and returns how many buckets got at
-    // least one sample. Buckets with no samples are marked invalid; they are
-    // gaps, not interpolated.
-    //
-    // Asking for more than MAX_BUCKETS buckets fills none of them and returns
-    // 0. It does not quietly fill the first MAX_BUCKETS, because a truncated
-    // chart looks like real data.
-    //
-    // Not reentrant: the scratch arrays are shared. Call it from one context
-    // (on the panel, the LVGL thread).
     size_t downsample(uint32_t window_ms, Bucket* out, size_t bucket_count) const;
 
   private:
