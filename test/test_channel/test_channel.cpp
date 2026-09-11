@@ -132,7 +132,9 @@ static void test_staleness_survives_millis_rollover(void) {
 
     // 10 s later, having wrapped through zero. Unsigned subtraction keeps the
     // elapsed time correct, so this must read as fresh rather than as 49 days.
-    const uint32_t after = before + 10000UL;
+    // The addition is deliberately made to wrap: cast explicitly so the
+    // compiler knows the truncation to uint32_t is intentional.
+    const uint32_t after = static_cast<uint32_t>(before + 10000UL);
     TEST_ASSERT_FALSE(c.isStale(after));
 
     TEST_ASSERT_TRUE(c.isStale(before + kOfficeStaleMs + 1000UL));
