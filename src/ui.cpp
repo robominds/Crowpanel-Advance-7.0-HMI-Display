@@ -58,6 +58,20 @@ float toDisplay(float celsius) {
     return g_fahrenheit ? (celsius * 9.0f / 5.0f + 32.0f) : celsius;
 }
 
+// lv_chart works in integers. Everything handed to a chart - both the series
+// values and the axis range - is therefore multiplied by this, giving tenths of
+// a degree instead of whole degrees. Without it an office that drifts two
+// degrees over twelve hours draws as a two-step staircase. Remove the factor
+// from one of the two and the trace leaves the visible range entirely, so keep
+// them in step.
+constexpr float CHART_SCALE = 10.0f;
+
+int32_t toChart(float display_value) {
+    // Round, not truncate: truncation biases every point toward zero, which on
+    // a Fahrenheit trace is a consistent tenth-of-a-degree downward shift.
+    return static_cast<int32_t>(std::lroundf(display_value * CHART_SCALE));
+}
+
 void buildRow(Row& row, int y, int height) {
     row.panel = lv_obj_create(lv_screen_active());
     lv_obj_set_pos(row.panel, 0, y);
@@ -199,15 +213,14 @@ void updateChart(size_t row_index) {
         lo_d = mid - 1.0f;
         hi_d = mid + 1.0f;
     }
-    lv_chart_set_range(row.chart, LV_CHART_AXIS_PRIMARY_Y,
-                       static_cast<int32_t>(lo_d - 1.0f),
-                       static_cast<int32_t>(hi_d + 1.0f));
+    lv_chart_set_range(row.chart, LV_CHART_AXIS_PRIMARY_Y, toChart(lo_d - 1.0f),
+                       toChart(hi_d + 1.0f));
 
     for (size_t i = 0; i < CHART_POINTS; ++i) {
         if (g_buckets[i].valid) {
-            lv_chart_set_value_by_id(
-                row.chart, row.series, static_cast<uint32_t>(i),
-                static_cast<int32_t>(toDisplay(g_buckets[i].temperature_c)));
+            lv_chart_set_value_by_id(row.chart, row.series,
+                                     static_cast<uint32_t>(i),
+                                     toChart(toDisplay(g_buckets[i].temperature_c)));
         } else {
             // A gap is drawn as a gap. The Maple Valley trace legitimately has
             // only about 48 real points across twelve hours; interpolating them
