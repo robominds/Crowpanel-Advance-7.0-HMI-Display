@@ -22,7 +22,10 @@
 // pixel clock all depend on it, and it is printed on the silkscreen.
 //   130 = V1.3, V1.4, V1.5   (current stock)
 //   120 = V1.2
-// Set this once the physical board is in hand. Until then panel_mcu probes.
+// Set this once the physical board is in hand and its silkscreen has been read.
+// It cannot be detected at run time: the companion MCU acknowledges any byte,
+// so a write can never report whether it was understood. panel_mcu logs which
+// revision it is driving at startup - check that against the silkscreen.
 #ifndef CROWPANEL_ADVANCE_REV
 #define CROWPANEL_ADVANCE_REV 130
 #endif

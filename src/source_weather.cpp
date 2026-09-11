@@ -82,7 +82,10 @@ void poll() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     const uint32_t now = millis();
-    // Unsigned comparison, correct across the millis() rollover.
+    // Signed difference, not `now < g_next_due_ms`: the unsigned subtraction
+    // wraps and the cast reinterprets the result, so a due time that has just
+    // rolled past 2^32 still reads as in the past. Correct for any interval
+    // shorter than ~24.8 days, which every interval here is.
     if (!g_first && static_cast<int32_t>(now - g_next_due_ms) < 0) return;
     g_first = false;
 
