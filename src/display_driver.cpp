@@ -102,20 +102,32 @@ bool display_init() {
     lv_init();
     lv_tick_set_cb(tick_cb);
 
-    // Draw buffers must be DMA-capable. Asking for SPIRAM here rather than
-    // letting malloc choose keeps them out of the internal SRAM that the
-    // network stack wants.
+    // The draw buffers come from PSRAM to keep them out of the internal SRAM
+    // that the network stack wants. They do NOT need to be DMA-capable, and
+    // asking for MALLOC_CAP_DMA here would guarantee failure: external RAM on
+    // the ESP32-S3 is never registered as DMA-capable, so no heap satisfies
+    // SPIRAM|DMA and every such request returns NULL. Nothing DMAs out of these
+    // buffers anyway - LovyanGFX owns the real scanout framebuffer (it
+    // allocates that itself with MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT), and a
+    // draw buffer is only the source of a memcpy into it.
     const size_t bytes = DRAW_PIXELS * sizeof(uint16_t);
-    void* buf1 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA);
-    void* buf2 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA);
+    void* buf1 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    void* buf2 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
     if (buf1 == nullptr || buf2 == nullptr) {
+        heap_caps_free(buf1);
+        heap_caps_free(buf2);
         Serial.println("display: draw buffer allocation failed");
-        Serial.println("display: check that the build selects OPI PSRAM");
+        Serial.println("display: check that the build selects OPI PSRAM,");
+        Serial.println("display: and that PSRAM initialised - this asks for");
+        Serial.printf("display: 2 x %u bytes of external RAM\n",
+                      static_cast<unsigned>(bytes));
         return false;
     }
 
     g_disp = lv_display_create(board::LCD_WIDTH, board::LCD_HEIGHT);
     if (g_disp == nullptr) {
+        heap_caps_free(buf1);
+        heap_caps_free(buf2);
         Serial.println("display: lv_display_create failed");
         return false;
     }
