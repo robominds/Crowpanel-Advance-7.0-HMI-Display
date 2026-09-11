@@ -74,6 +74,18 @@ which matters because twelve hours across 380 pixels is already coarse.
 +-----------------------------------------------+
 ```
 
+> **Deferred: the clock in the status bar.** The mock above shows `10:34 PDT`
+> at the right of the status bar. The firmware does not draw it, and this is
+> deliberate rather than an oversight. The time would come from the onboard
+> PCF8563 RTC, whose I2C address (`0x51`) is taken from the part's datasheet and
+> not from any Elecrow sketch or schematic annotation — no code in their
+> repository touches that chip and the schematic shows no address pins, so the
+> address is unconfirmed, and the `#INT` line is not wired to the ESP32 either.
+> Probing a wrong address on a bus shared with the panel MCU and the touch
+> controller is not something to do blind. The clock stays out until the board
+> is in hand and the RTC has been verified on it; the mock is kept as the
+> intended end state.
+
 Channels are a **registry**, not two hardcoded panels. Adding the garage or AC2
 later is a table entry and a row, not a refactor. The registry is the reason the
 indirection exists; with two channels it would otherwise be over-engineering.
