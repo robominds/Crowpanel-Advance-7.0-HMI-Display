@@ -4,8 +4,5 @@
   "description": "Payload parsing for MQTT bare-decimal values and Open-Meteo JSON. Pure C++17, host-testable.",
   "dependencies": {
     "bblanchon/ArduinoJson": "^7.0.0"
-  },
-  "build": {
-    "flags": ["-std=c++17"]
   }
 }
