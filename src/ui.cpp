@@ -42,6 +42,14 @@ size_t g_row_count = 0;
 lv_obj_t* g_status_wifi = nullptr;
 lv_obj_t* g_status_mqtt = nullptr;
 
+// Last connection state actually written to the status bar. `primed` false
+// means nothing has been written yet, so the first setStatus() call always
+// draws whatever the initial "wifi ..." / "mqtt ..." placeholders should
+// become.
+bool g_last_wifi_up  = false;
+bool g_last_mqtt_up  = false;
+bool g_status_primed = false;
+
 bool g_fahrenheit = true;
 
 history::SampleHistory::Bucket g_buckets[CHART_POINTS];
@@ -213,6 +221,17 @@ void updateChart(size_t row_index) {
 }
 
 void setStatus(bool wifi_up, bool mqtt_up) {
+    // main.cpp calls this every loop iteration, and lv_label_set_text()
+    // invalidates the label before it compares anything - so without this guard
+    // both labels would be dirty on every refresh for the life of the device
+    // and the panel would never get an idle frame. Same shape as refresh().
+    if (g_status_primed && wifi_up == g_last_wifi_up && mqtt_up == g_last_mqtt_up) {
+        return;
+    }
+    g_status_primed = true;
+    g_last_wifi_up  = wifi_up;
+    g_last_mqtt_up  = mqtt_up;
+
     if (g_status_wifi != nullptr) {
         lv_label_set_text(g_status_wifi, wifi_up ? "wifi ok" : "wifi down");
     }
