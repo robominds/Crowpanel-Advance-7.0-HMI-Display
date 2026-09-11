@@ -15,12 +15,13 @@
 //
 // Getting this wrong produces a black screen with no error, no serial
 // complaint, and a correctly scanning panel behind it - which reads as a dead
-// board. Since the revision is printed on the silkscreen and the board has not
-// arrived, begin() probes: it tries the V1.3+ encoding first, falls back to
-// V1.2, and reports which answered.
+// board. The companion MCU acknowledges any byte, so a write cannot report
+// whether it was understood; therefore begin() does not probe. The revision
+// comes from the compile-time constant CROWPANEL_ADVANCE_REV (which defaults to
+// V1.3 and later—the current stock). begin() logs which revision it is driving
+// and what to change if the screen stays dark.
 //
-// Once the revision is known, set CROWPANEL_ADVANCE_REV in board_pins.h and
-// this probing can be deleted.
+// Once the revision is known, set CROWPANEL_ADVANCE_REV in board_pins.h.
 //
 // The part is a black box. Elecrow publish no source and no register
 // specification, its behaviour changed between revisions, and it is not
