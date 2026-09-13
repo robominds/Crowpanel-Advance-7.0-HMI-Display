@@ -17,8 +17,10 @@
 namespace source_mqtt {
 namespace {
 
-constexpr char TOPIC_TEMP[] = "office/DHT/tempc";
-constexpr char TOPIC_HUM[]  = "office/DHT/hum";
+// From include/secrets.h, because which device publishes the indoor reading is
+// a property of one person's network rather than of this firmware.
+constexpr char TOPIC_TEMP[] = MQTT_TOPIC_TEMP;
+constexpr char TOPIC_HUM[]  = MQTT_TOPIC_HUM;
 
 constexpr uint32_t RETRY_MIN_MS = 2000;
 constexpr uint32_t RETRY_MAX_MS = 30000;
