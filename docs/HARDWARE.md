@@ -491,6 +491,26 @@ On V1.3+ the mux's channel-2 inputs are physically unconnected, which is why the
 plainly that "the audio output and TF card usage cannot be used at the same
 time."
 
+**The `1 1` row is now confirmed empirically, not just inferred from the
+pulldowns.** On 2026-09-12, with a purpose-built diagnostic (`tools/diag/main.cpp`,
+the `diag` PlatformIO environment), the owner worked through all four S1/S0
+combinations while a live pin probe watched GPIO4/5/6 directly. The card became
+reachable only with **both switches in the position labelled 1** — S1=1, S0=1 —
+matching the table above. The labelling is what it appears to be, and the 10 K
+pulldowns' implication that closed reads as 1 held up under test. This answers
+the question section 9 previously listed as inference.
+
+> **A passive pin probe is the fastest way to diagnose this.** The card reaches
+> the ESP32 only through the CH486F switch, and software cannot read the DIP
+> switches at all, so the useful measurement is electrical, not code. Check
+> whether anything holds MISO/DAT0 high against an internal pulldown. With the
+> switches wrong, GPIO4, GPIO5 and GPIO6 all read low, whether floating or
+> pulled down — nothing is attached. With them right, a seated, routed, powered
+> card holds MISO and MOSI high while SCK reads low, since the clock is
+> host-driven and has no pull-up of its own. That distinguishes a routing
+> problem from an SPI problem in one measurement, before any driver is
+> involved — worth trying first the next time a card comes back "not found."
+
 **Speaker — NS4168 class-D amplifier (`U10`), all revisions.**
 
 | Signal | GPIO |
@@ -535,21 +555,39 @@ firmware. Runs at 40 MHz, SPI only, no SDMMC.
 
 > **That `0` is an API placeholder, not a pin.** The SD library requires a
 > number. Do not configure or drive GPIO0, which is the boot strapping pin and
-> part of the auto-download circuit.
+> part of the auto-download circuit. The `diag` diagnostic passes **GPIO8**
+> instead, one of the two pins genuinely free on a V1.3+ board (section 3).
 
 > The wiki's claim that CS is `3.3V` is wrong, and the readme's claim that CS is
 > GPIO7 is worse — GPIO7 is a red data line. See section 7.
+
+**Confirmed on hardware, 2026-09-12**, with the `diag` tool at S1=1, S0=1: the
+card enumerates as SDHC/SDXC at the full documented 40 MHz — no fallback to a
+slower clock was needed. Reported size 29554 MB, 29542 MB total after
+formatting, empty. A write, read-back and remove cycle all passed.
 
 ### 2.9 Real-time clock, battery, buzzer, radio
 
 - **RTC: `U4`.** The Eagle deviceset is named `BM8563EMA`, but the fitted value
   on the V1.3 and V1.5 schematics is **`PCF8563MDTR`**. Both names circulate
   because both are true, for different revisions; the parts are
-  register-compatible, so either driver works. Address **0x51** — but note that
-this comes from the PCF8563 datasheet, not from Elecrow, since **no sketch in the
-repository ever touches the RTC** and the schematic shows no address pins. A
-  32.768 kHz crystal (`Y1`) and a **CR1220** backup cell (`BT1`) through a
-  BAT54C. **The RTC's `#INT` is not wired to the ESP32.**
+  register-compatible, so either driver works. Address **0x51** was, until
+  now, inferred from the PCF8563 datasheet rather than from Elecrow — **no
+  sketch in the repository ever touches the RTC** and the schematic shows no
+  address pins. **Confirmed present at 0x51 on hardware, 2026-09-12**, with a
+  purpose-built diagnostic (`tools/diag/main.cpp`, the `diag` PlatformIO
+  environment). **Its oscillator runs**: reported time advanced correctly
+  between separate runs several minutes apart —
+  `2000-04-09 23:41:34`, then `23:48:17`, `23:49:32`, `23:50:36` and `23:52:03`
+  across five runs — confirming the 32.768 kHz crystal (`Y1`) is alive.
+  **Its voltage-low flag (bit 7 of the seconds register) is set**
+  (`control1=0x08`, `control2=0x00`). That flag means the oscillator has
+  stopped at some point in this part's history, so the time it currently
+  reports is not trustworthy — exactly what an unset clock on a board nobody
+  has ever configured should say. It is **not** evidence of a fault, and
+  specifically it says nothing about whether the **CR1220** backup cell
+  (`BT1`, through a BAT54C) holds time across a power cycle. **That remains
+  completely untested.** The RTC's `#INT` is not wired to the ESP32.
   No Elecrow sketch uses the RTC at all, though a `I2C_BM8563_RTC` library is
   bundled unused in the examples folder.
 - **Battery: `U2` = TP4059** charger, connector `J3` = PH2.0 2-pin, 3.7–4.2 V,
@@ -947,6 +985,37 @@ easy to see what moved from "to check" to "checked."
     precision across the screen. Still outstanding.
 13. **Power supply headroom.** Not checked. Still outstanding.
 
+### A second round, same day, with a dedicated diagnostic
+
+A second session on 2026-09-12 used a purpose-built diagnostic sketch,
+`tools/diag/main.cpp`, built as the `diag` PlatformIO environment, to work
+through items the first bring-up had left outstanding.
+
+14. **RTC presence.** Confirmed: the PCF8563 answers at I2C 0x51. Item 4 above
+    left this outstanding; it no longer is. See section 2.9.
+15. **RTC oscillator.** Confirmed running. Reported time advanced correctly
+    between separate runs several minutes apart — `2000-04-09 23:41:34`, then
+    `23:48:17`, `23:49:32`, `23:50:36`, `23:52:03` across five runs — so the
+    32.768 kHz crystal is alive.
+16. **RTC voltage-low flag.** Set (bit 7 of the seconds register;
+    `control1=0x08`, `control2=0x00`). That means the oscillator has stopped
+    at some point in this part's history and the reported date/time cannot be
+    trusted — expected on a board nobody has ever set the clock on, not a
+    fault. It says nothing about whether the CR1220 backup cell holds time
+    across a power cycle; that is still untested. See section 2.9.
+17. **DIP switch mapping.** Confirmed empirically. All four S1/S0 combinations
+    were tried while probing GPIO4/5/6 directly. The card became reachable
+    only with both switches in the position labelled 1 (S1=1, S0=1), matching
+    Elecrow's documented table. Item 6 above left this outstanding; it no
+    longer is. See section 2.8 for the probe technique.
+18. **microSD.** Confirmed working at the full 40 MHz, no fallback needed.
+    SDHC/SDXC, 29554 MB reported, 29542 MB total after formatting, empty.
+    Write, read-back and remove all passed.
+19. **microSD chip-select trap avoided.** The diagnostic passes GPIO8 as the
+    placeholder CS pin the SD library demands, not Elecrow's own example
+    value of GPIO0 — GPIO0 is the boot strap pin, and holding it low across a
+    reset drops the board into the bootloader. See section 2.8.
+
 ---
 
 ## 9. Open questions
@@ -957,6 +1026,17 @@ easy to see what moved from "to check" to "checked."
    silicon with esptool on 2026-09-12. See section 1. Elecrow's own caveat
    about the Eagle deviceset lacking a memory suffix still explains why the
    schematic alone couldn't settle this; it just no longer needs to.
+
+### Answered by the second round of testing
+
+1. **The RTC's I2C address.** Confirmed directly from the part, not just the
+   datasheet: the PCF8563 answers at 0x51. See sections 2.9 and 8.
+2. **Which physical DIP switch position is "0" and which is "1".** Confirmed by
+   working through all four combinations with a live pin probe: the card
+   becomes reachable only with both switches in the position labelled 1
+   (S1=1, S0=1), matching Elecrow's own table. The labelling is what it
+   appears to be, and the 10 K pulldowns' implication that closed reads as 1
+   held up under test. See sections 2.8 and 8.
 
 ### Still not resolvable from documentation, or from this bring-up
 
@@ -977,30 +1057,31 @@ easy to see what moved from "to check" to "checked."
     discouraged, and the part is not reflashable through the ESP32.
 4. **The buzzer command byte.** No example in the repository sounds the buzzer.
     246 and 247 come from the wiki and are untested.
-5. **The RTC's I2C address, from a vendor source.** 0x51 is the PCF8563
-    datasheet address and is almost certainly right, but no Elecrow code, and
-    no bring-up so far, touches the RTC, and the schematic shows no address
-    pins — so it remains datasheet inference rather than vendor or hardware
-    confirmation.
-6. **Which physical DIP switch position is "0" and which is "1".** The schematic
-    note says set S1 and S0 to 0 and 1 for `UART1-OUT`, but never defines the
-    mapping to the physical slider. The 10 K pulldowns imply closed reads as 1;
-    that is inference.
-7. **Whether V1.5 differs electrically from V1.4** beyond the touch FPC package.
+5. **Whether the CR1220 backup cell holds RTC time across a power cycle.**
+    Completely untested — the battery backup itself has not been touched. The
+    voltage-low flag being set (section 2.9) only says the oscillator has
+    stopped at some point in this part's history, which is expected on a board
+    nobody has ever set the clock on; it says nothing about whether the
+    battery can hold time going forward.
+6. **Whether V1.5 differs electrically from V1.4** beyond the touch FPC package.
     Searching the V1.3, V1.4 and V1.5 schematics for every part discussed here
     returns identical results, which is presumably why Elecrow ship one example
     folder for all three.
-8. **The LMD3526's L/R channel select on V1.3+.** Its pull-up R34 is marked
+7. **The LMD3526's L/R channel select on V1.3+.** Its pull-up R34 is marked
     `10K/NC` and appears unfitted, so the pin floats. Elecrow's code is mono and
     sidesteps the question.
-9. **J11 pins 4 and 7 have no net** — mechanical only, or reserved, unknown.
-10. **Whether anyone has run on-device ESP-SR wake-word detection on this
+8. **J11 pins 4 and 7 have no net** — mechanical only, or reserved, unknown.
+9. **Whether anyone has run on-device ESP-SR wake-word detection on this
     board.** It is technically feasible and the patched core libraries even ship
     `esp_sr/srmodels.bin`, but Elecrow provide no example.
-11. **Reported PCF8563 read flakiness under ESPHome** — driver, bus contention,
+10. **Reported PCF8563 read flakiness under ESPHome** — driver, bus contention,
     or unit-specific, unknown.
-12. **The V1.4 wireless socket's S3-to-ESP32-C6 TX pin**, which vendor issue #6
+11. **The V1.4 wireless socket's S3-to-ESP32-C6 TX pin**, which vendor issue #6
     asks about and which remains unanswered.
+12. **The audio path, microphone and speaker.** Untouched by any bring-up so
+    far. Note that the switch position that reaches the microSD card (S1=1,
+    S0=1) is shared with the microphone, and that the speaker (S1=0, S0=0) is
+    mutually exclusive with both.
 
 ### On the "AI" in the product name
 
