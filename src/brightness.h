@@ -21,9 +21,12 @@ namespace brightness {
 // These are LED current, not perceived brightness: eyes are roughly
 // logarithmic, so halving the current looks closer to seventy percent as
 // bright. Tried in order on the real panel: 50 was barely distinguishable from
-// full, exactly as that curve predicts; 25 was clearly dimmer; 10 dimmer again.
-// 5 is the fourth attempt.
-constexpr uint8_t DAY_PERCENT   = 100;
+// full, exactly as that curve predicts; 25 was clearly dimmer; 10 dimmer again;
+// 5 is where it settled.
+//
+// Day is 40 rather than 100 for the same reason the night value is so low: this
+// panel is bright, and full output is more than a room needs.
+constexpr uint8_t DAY_PERCENT   = 40;
 constexpr uint8_t NIGHT_PERCENT = 5;
 
 // Today's sun times, as minutes since local midnight, or -1 for unknown.
