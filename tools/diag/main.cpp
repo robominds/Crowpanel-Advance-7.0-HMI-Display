@@ -51,6 +51,42 @@ const char* deviceName(uint8_t addr) {
     }
 }
 
+uint8_t dec2bcd(uint8_t v) { return static_cast<uint8_t>(((v / 10) << 4) | (v % 10)); }
+
+// Writes the time and, by writing bit 7 of the seconds register as zero, clears
+// the voltage-low flag. That flag latches whenever the oscillator stops, so
+// clearing it here is what makes the next power-up meaningful: if it comes back
+// set, the clock lost power, which means the CR1220 is not holding it.
+bool setRTC(int y, int mo, int d, int wd, int h, int mi, int sec) {
+    Wire.beginTransmission(board::RTC_ADDR);
+    Wire.write(0x02);
+    Wire.write(dec2bcd(static_cast<uint8_t>(sec)) & 0x7F);  // bit 7 = 0 clears VL
+    Wire.write(dec2bcd(static_cast<uint8_t>(mi)));
+    Wire.write(dec2bcd(static_cast<uint8_t>(h)));
+    Wire.write(dec2bcd(static_cast<uint8_t>(d)));
+    Wire.write(dec2bcd(static_cast<uint8_t>(wd)));
+    Wire.write(dec2bcd(static_cast<uint8_t>(mo)));          // century bit 7 = 0
+    Wire.write(dec2bcd(static_cast<uint8_t>(y % 100)));
+    return Wire.endTransmission() == 0;
+}
+
+void printRTC(const char* prefix) {
+    Wire.beginTransmission(board::RTC_ADDR);
+    Wire.write(0x02);
+    if (Wire.endTransmission(false) != 0) { Serial.printf("%s read failed\n", prefix); return; }
+    if (Wire.requestFrom(static_cast<int>(board::RTC_ADDR), 7) != 7) {
+        Serial.printf("%s read failed\n", prefix); return;
+    }
+    uint8_t r[7]; for (uint8_t& b : r) b = Wire.read();
+    const bool vl = (r[0] & 0x80) != 0;
+    Serial.printf("%s 20%02u-%02u-%02u %02u:%02u:%02u   VL=%d  %s\n", prefix,
+                  bcd2dec(r[6]), bcd2dec(r[5] & 0x1F), bcd2dec(r[3] & 0x3F),
+                  bcd2dec(r[2] & 0x3F), bcd2dec(r[1] & 0x7F), bcd2dec(r[0] & 0x7F),
+                  vl ? 1 : 0,
+                  vl ? "<<< oscillator STOPPED since the flag was cleared"
+                     : "clock has run continuously since it was set");
+}
+
 void scanI2C() {
     Serial.println("\n--- I2C bus scan (GPIO15 SDA, GPIO16 SCL) ---");
     int found = 0;
@@ -241,26 +277,49 @@ void setup() {
     Serial.println("Restore the application with: pio run -e advance_70 -t upload");
 }
 
-// Live probe. The DIP switch positions are not readable in software - they
-// drive the analog switch's select lines directly - and Elecrow never document
-// which physical slider position is "0". So watch the pins instead: flip a
-// switch and see whether the card starts holding MISO high. That answers the
-// question empirically in seconds, where reflashing per position takes minutes.
+// Command driven, so the clock can be set and read back WITHOUT reflashing in
+// between. That matters for the battery test: the board has to be fully
+// unpowered between the two reads, and a reflash would reset the clock again.
+//
+//   set Y M D WD h m s   write the clock and clear the voltage-low flag
+//   get                  read it back
+//   probe                sample the microSD pins against a pulldown
 void loop() {
-    static uint32_t n = 0;
-
-    const int pins[] = {SD_MISO, SD_SCK, SD_MOSI};
-    int held[3];
-    for (int i = 0; i < 3; ++i) {
-        pinMode(pins[i], INPUT_PULLDOWN);
-        delay(3);
-        held[i] = digitalRead(pins[i]);
-        pinMode(pins[i], INPUT);
+    static bool prompted = false;
+    if (!prompted) {
+        Serial.println("\ncommands: set <Y> <M> <D> <WD> <h> <m> <s> | get | probe");
+        prompted = true;
     }
 
-    Serial.printf("[%4u] against a pulldown:  MISO=%d  SCK=%d  MOSI=%d   %s\n",
-                  n++, held[0], held[1], held[2],
-                  held[0] ? "<<< CARD IS ROUTED - this switch position works"
-                          : "nothing routed - try the other switch positions");
-    delay(1000);
+    if (!Serial.available()) { delay(50); return; }
+
+    String line = Serial.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) return;
+
+    if (line.startsWith("set")) {
+        int y, mo, d, wd, h, mi, sec;
+        if (sscanf(line.c_str(), "set %d %d %d %d %d %d %d", &y, &mo, &d, &wd, &h,
+                   &mi, &sec) != 7) {
+            Serial.println("  usage: set <Y> <M> <D> <WD> <h> <m> <s>");
+            return;
+        }
+        Serial.printf("  writing 20%02d-%02d-%02d %02d:%02d:%02d ...\n", y % 100, mo,
+                      d, h, mi, sec);
+        if (!setRTC(y, mo, d, wd, h, mi, sec)) {
+            Serial.println("  WRITE FAILED");
+            return;
+        }
+        delay(20);
+        printRTC("  now reads:");
+        Serial.println("  voltage-low flag cleared. Unplug the board completely,");
+        Serial.println("  wait, plug it back in, and run 'get'. If VL comes back");
+        Serial.println("  set, the CR1220 is not holding the clock.");
+    } else if (line.startsWith("get")) {
+        printRTC("  reads:");
+    } else if (line.startsWith("probe")) {
+        probeSDPins();
+    } else {
+        Serial.printf("  unknown command: %s\n", line.c_str());
+    }
 }
