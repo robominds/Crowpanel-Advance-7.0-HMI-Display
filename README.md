@@ -10,8 +10,12 @@ readings, each with humidity and a twelve-hour scrolling chart:
   `192.0.2.10:1883`. The broker accepts anonymous connections; there is
   nothing to authenticate.
 
-No photograph exists yet — see the warning below about the state of this
-project.
+![The display showing both channels live, each with a twelve-hour chart](docs/display.png)
+
+Running on hardware: the panel comes up at its documented 16 MHz pixel clock,
+touch answers at 0x5D on the first try, and both sources feed the display over
+Wi-Fi. The photograph above was taken shortly after a reflash, which is why each
+chart holds a single point — history lives in RAM and starts empty at boot.
 
 ## Build and flash
 
