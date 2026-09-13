@@ -8,11 +8,16 @@ HMI IPS AI Touch Screen with Acrylic Case ... (Advanced)"
 **Board revisions:** V1.0, V1.2, V1.3, V1.4, V1.5 — this matters more than on most
 boards, see section 4
 
-> **No physical unit has been inspected.** Every value here comes from Elecrow's
-> committed source, their Eagle schematics, or their wiki, and each is cited.
-> Where a value was read verbatim out of a source file it is quoted as code.
-> Section 8 lists what to check the moment the board is in hand; section 9 lists
-> what documentation alone cannot settle.
+> **A unit was brought up on 2026-09-12** — connected, flashed, and run, over
+> the board's own USB-C with esptool v5.3.0. That confirmed the module is an
+> N16R8, the board is revision V1.3 or later, touch and the panel come up as
+> documented, and serial and upload work as predicted. It also turned up one
+> new finding not in any vendor source: macOS needs a driver Apple does not
+> ship before it will even see the board. Section 8 is now a record of what
+> that bring-up checked and what it showed; section 9 lists what is still
+> open. Everything not confirmed there still comes from Elecrow's committed
+> source, their Eagle schematics, or their wiki, cited as before, with values
+> read verbatim out of a source file quoted as code.
 
 This document is a consolidated, source-cited hardware reference intended to be
 reusable across any firmware project targeting this board. It records not only
@@ -111,8 +116,26 @@ the Arduino build menu must take precedence."
 > does lack a memory suffix — but the warning is not Elecrow engineering
 > speaking.
 
-Read the laser marking on the module shield when the board arrives. It is one
-line of text and it settles the question permanently.
+**Settled now, from the silicon.** `esptool.py` v5.3.0, talking to the chip
+over its own USB-C on 2026-09-12, reports:
+
+```
+Chip type:          ESP32-S3 (QFN56) (revision v0.2)
+Features:           Wi-Fi, BT 5 (LE), Dual Core + LP Core, 240MHz, Embedded PSRAM 8MB (AP_3v3)
+Crystal frequency:  40MHz
+MAC:                a4:cb:8f:c0:73:c8
+Manufacturer: 46
+Device: 4018
+Detected flash size: 16MB
+Flash type set in eFuse: quad (4 data lines)
+Flash voltage set by eFuse: 3.3V
+```
+
+16 MB flash, 8 MB embedded PSRAM — N16R8, read from the part itself rather
+than a schematic annotation. This is exactly the kind of evidence the Eagle
+deviceset could never provide, and it settles the question the caveat above
+raises. The laser marking on the module shield was not read; it was not
+needed.
 
 ### PSRAM speed: the flicker question, and it is genuinely unsettled
 
@@ -404,6 +427,25 @@ step down to 460800 then 115200.
 Monitor at 115200. Elecrow's `platformio.ini` sets `monitor_speed = 115200` and
 their examples use `Serial.begin(115200)`, though lesson-01 inconsistently uses
 9600.
+
+**macOS does not recognise this board out of the box, and the failure looks
+like a dead board.** Confirmed on macOS 26.6.2 during bring-up. The CH340K
+enumerates as USB vendor `0x1a86`, product **`0x7522`**. Apple's built-in
+serial driver, `/System/Library/DriverExtensions/com.apple.DriverKit-AppleUSBCHCOM.dext`,
+matches only `1a86:7523` and `1a86:55d4` — one digit off — so macOS sees the
+device on the bus but binds no serial driver and creates no `/dev/cu.*` node.
+`pio device list` shows nothing, and there is no error to explain why.
+
+The fix is WCH's own DriverKit driver, `CH34xVCPDriver`
+(<https://github.com/WCHSoftGroup/ch34xser_macos>, also on the Mac App Store),
+then approving it under System Settings → General → Login Items & Extensions →
+Driver Extensions. Until approved, `systemextensionsctl list` shows it as
+`[activated waiting for user]` — flashing will not work until that changes.
+
+> **Do not install the older kernel-extension version of this driver.** It is
+> documented elsewhere as causing kernel panics. And do not install two CH34x
+> drivers at once — that produces two serial ports, one of which is dead,
+> which is its own hour of confusion on top of the first one.
 
 ### 2.7 The STC8H1K28 companion MCU — read this before blaming your code
 
@@ -830,79 +872,134 @@ yourself.
 12. **`factory_sourcecode` references `ui.h` and `ui.c` that were never
     committed.** Use `example/V1.3_and_V1.4_and_V1.5/Arduino/lesson-03/BigInch_LVGL`.
 13. **N16R8 is a schematic text label, not the Eagle device name** — Elecrow
-    themselves flag this and say to verify against the module marking.
+    themselves flag this and say to verify against the module marking. Now
+    settled independently: the bring-up unit's silicon reports N16R8 directly.
+    See section 1.
 14. **The product page advertises MicroPython**, for which Elecrow ship no
     firmware. openHASP also does not support the Advance series.
+15. **macOS ships no driver for this board's CH340K.** It enumerates as
+    `1a86:7522`; Apple's built-in driver only matches `1a86:7523` and
+    `1a86:55d4`. The board enumerates but gets no `/dev/cu.*` node, so it
+    presents as a dead board rather than a driver problem. Not a vendor
+    documentation error, but it costs exactly the same evening. See section
+    2.6.
 
 ---
 
-## 8. To verify when the board arrives
+## 8. What the first bring-up checked
 
-Nothing here has touched hardware. Roughly in order of what a wrong answer costs
-you.
+A unit was brought up on 2026-09-12 — connected, flashed, and run over its own
+USB-C, esptool v5.3.0. Same order as the old pre-arrival checklist, so it is
+easy to see what moved from "to check" to "checked."
 
-1. **Board revision, from the silkscreen.** Determines the backlight encoding,
-   the microphone type, the pixel clock and whether GPIO2 and GPIO8 are free.
-   Everything else depends on this.
-2. **The module's laser marking.** Confirms or refutes N16R8, which Elecrow
-   explicitly decline to guarantee.
-3. **That the backlight responds** to the encoding for that revision.
-4. **An I2C bus scan.** Expect 0x30, 0x51 and 0x5D on a V1.3+ board; 0x18 instead
-   of 0x30 means you have a V1.0.
-5. **Whether the GT911 answers at 0x5D or 0x14.**
-6. **The DIP switch positions as shipped**, and which subsystems that selects.
-7. **Serial output at 115200 with CDC off**, confirming the CH340K path.
-8. **Upload at 921600**, and whether it is actually reliable.
-9. **The panel at that revision's pixel clock**, then whether it tolerates more.
-10. **Touch polling at 20 ms**, watching for display shake if you go faster.
-11. **PSRAM at 80 MHz, then 120 MHz**, noting which direction flicker moves.
-12. **Touch axis orientation.** An inverted axis survives casual testing because a
-    centred target still works.
-13. **Power supply headroom.** Elecrow warn that a low-current USB port can brown
-    the panel to black; the `UART0-IN` header takes 5 V at 2 A.
+1. **Board revision.** Not read from the silkscreen — inferred from behaviour,
+   which works just as well. The companion MCU answered at I2C 0x30, which
+   rules out V1.0 (that has an expander at 0x18 instead). The backlight lit
+   correctly using the V1.3+ encoding, 0 brightest, which rules out V1.2. So:
+   **V1.3 or later.** Nothing on this unit distinguishes V1.3 from V1.4 from
+   V1.5 — consistent with section 9's note that those three appear
+   electrically identical.
+2. **The module.** Confirmed N16R8 directly from the silicon via esptool,
+   without needing the laser marking. See section 1.
+3. **The backlight responds** to the V1.3+ encoding. Confirmed.
+4. **I2C bus scan.** 0x30 (companion MCU) and 0x5D (touch) both answered.
+   0x51 (the RTC) was not probed — still outstanding.
+5. **GT911 address.** Answered at 0x5D, the primary address, on the first
+   try. The address-latch sequence — hold GPIO1 low, command the companion
+   MCU to reset, 120 ms hold, release — worked as documented. The 0x14
+   fallback was not needed.
+6. **DIP switch positions as shipped.** Not checked. Still outstanding, and so
+   are the audio, microphone and microSD paths that depend on them.
+7. **Serial at 115200 with CDC off.** Confirmed, through the CH340K — once
+   macOS had a driver for it at all. See section 2.6; that is not a firmware
+   or wiring problem, but it cost real time regardless.
+8. **Upload at 921600.** Confirmed reliable: roughly a dozen flashes, hash
+   verified every time. This differs from the older CrowPanel 7.0, which
+   needs 460800.
+9. **Pixel clock.** Confirmed at the documented 16 MHz for V1.3+, with 8/4/8
+   porches on both axes, 800x480, image stable. Whether the panel tolerates a
+   higher clock was not attempted — still outstanding.
+10. **Touch polling and display shake.** Checked, and root-caused rather than
+    just observed. Two firmware causes, both fixed:
+    - The LVGL draw buffers were allocated in PSRAM, and the RGB panel scans
+      its framebuffer out of PSRAM continuously, so every flush contended the
+      same bus the scanout needed. Moving the draw buffers — two 16 KB
+      buffers — to internal DMA-capable RAM eliminated the idle jitter.
+    - The touch driver issued two separate I2C reads per poll, one for the
+      status byte and one for the coordinates. Those registers are
+      contiguous, so one six-byte read fetches both and holds the shared bus
+      for half as long. This eliminated the jitter that appeared while a
+      finger was on the glass.
+    Both confirmed by direct before-and-after observation.
+11. **PSRAM speed.** 120 MHz is confirmed unreachable under PlatformIO: the
+    installed
+    `framework-arduinoespressif32-libs/esp32s3/qio_opi/include/sdkconfig.h`
+    is precompiled with `CONFIG_SPIRAM_SPEED_80M`, and an application-level
+    `-DCONFIG_SPIRAM_SPEED_120M=1` cannot change what the precompiled
+    libraries already did — confirming section 5.2's note. More importantly,
+    **80 MHz proved fine once the buffer placement above was corrected.** On
+    this unit the jitter was never a PSRAM-speed problem, which is useful
+    context for the contradictory vendor and community advice in section 1 —
+    it does not resolve which revision, if any, genuinely needs 120 MHz, only
+    that this one did not.
+12. **Touch axis orientation.** Not checked. A long press anywhere works,
+    which proves touch functions, but says nothing about axis orientation or
+    precision across the screen. Still outstanding.
+13. **Power supply headroom.** Not checked. Still outstanding.
 
 ---
 
 ## 9. Open questions
 
-Not resolvable from documentation.
+### Answered by the first bring-up
 
-1. **Whether this specific unit is N16R8.** Elecrow decline to guarantee it.
-2. **Whether 120 MHz PSRAM helps or hurts on this revision.** Vendor issue #7
+1. **Whether this specific unit is N16R8.** Yes — read directly from the
+   silicon with esptool on 2026-09-12. See section 1. Elecrow's own caveat
+   about the Eagle deviceset lacking a memory suffix still explains why the
+   schematic alone couldn't settle this; it just no longer needs to.
+
+### Still not resolvable from documentation, or from this bring-up
+
+1. **Whether 120 MHz PSRAM helps or hurts on this revision.** Vendor issue #7
    root-causes flicker to 80 MHz on a V1.4 and fixes it at 120 MHz; the Home
    Assistant community finds 120 MHz unreliable on V1.2. Probably
-   revision-dependent, but unconfirmed.
-3. **The absolute pin-1 orientation of the 4-pin PH2.0 and XH2.54 headers.** Net
+   revision-dependent, but still unconfirmed — 120 MHz was never reached on
+   the bring-up unit, because it is not reachable under PlatformIO (section
+   8). What the bring-up did establish is that 80 MHz was fine once this
+   unit's real, firmware-side jitter cause was fixed — evidence that this
+   unit didn't need 120 MHz, not evidence about other revisions.
+2. **The absolute pin-1 orientation of the 4-pin PH2.0 and XH2.54 headers.** Net
    membership is certain; physical order should be checked against the silkscreen.
-4. **The full STC8H1K28 command table.** Only the bytes listed in section 2.3
+3. **The full STC8H1K28 command table.** Only the bytes listed in section 2.3
     appear in any example. No source, no register spec, behaviour varies by
     revision, and the vendor issue asking for documentation is open and
     unanswered. Probing undefined bytes to find the rest is explicitly
     discouraged, and the part is not reflashable through the ESP32.
-5. **The buzzer command byte.** No example in the repository sounds the buzzer.
+4. **The buzzer command byte.** No example in the repository sounds the buzzer.
     246 and 247 come from the wiki and are untested.
-6. **The RTC's I2C address, from a vendor source.** 0x51 is the PCF8563
-    datasheet address and is almost certainly right, but no Elecrow code touches
-    the RTC and the schematic shows no address pins, so it is datasheet
-    inference rather than vendor confirmation.
-7. **Which physical DIP switch position is "0" and which is "1".** The schematic
+5. **The RTC's I2C address, from a vendor source.** 0x51 is the PCF8563
+    datasheet address and is almost certainly right, but no Elecrow code, and
+    no bring-up so far, touches the RTC, and the schematic shows no address
+    pins — so it remains datasheet inference rather than vendor or hardware
+    confirmation.
+6. **Which physical DIP switch position is "0" and which is "1".** The schematic
     note says set S1 and S0 to 0 and 1 for `UART1-OUT`, but never defines the
     mapping to the physical slider. The 10 K pulldowns imply closed reads as 1;
     that is inference.
-8. **Whether V1.5 differs electrically from V1.4** beyond the touch FPC package.
+7. **Whether V1.5 differs electrically from V1.4** beyond the touch FPC package.
     Searching the V1.3, V1.4 and V1.5 schematics for every part discussed here
     returns identical results, which is presumably why Elecrow ship one example
     folder for all three.
-9. **The LMD3526's L/R channel select on V1.3+.** Its pull-up R34 is marked
+8. **The LMD3526's L/R channel select on V1.3+.** Its pull-up R34 is marked
     `10K/NC` and appears unfitted, so the pin floats. Elecrow's code is mono and
     sidesteps the question.
-10. **J11 pins 4 and 7 have no net** — mechanical only, or reserved, unknown.
-11. **Whether anyone has run on-device ESP-SR wake-word detection on this
+9. **J11 pins 4 and 7 have no net** — mechanical only, or reserved, unknown.
+10. **Whether anyone has run on-device ESP-SR wake-word detection on this
     board.** It is technically feasible and the patched core libraries even ship
     `esp_sr/srmodels.bin`, but Elecrow provide no example.
-12. **Reported PCF8563 read flakiness under ESPHome** — driver, bus contention,
+11. **Reported PCF8563 read flakiness under ESPHome** — driver, bus contention,
     or unit-specific, unknown.
-13. **The V1.4 wireless socket's S3-to-ESP32-C6 TX pin**, which vendor issue #6
+12. **The V1.4 wireless socket's S3-to-ESP32-C6 TX pin**, which vendor issue #6
     asks about and which remains unanswered.
 
 ### On the "AI" in the product name
@@ -982,6 +1079,7 @@ Researched and drafted with Claude Code (Anthropic Claude Opus 5). Hardware
 claims were cross-checked against Elecrow's Eagle schematics and committed
 source; values read verbatim from those files are quoted as code. Conflicting
 figures between revisions were resolved by reading all three versions of the
-driver directly rather than trusting any single summary. **No physical unit has
-been inspected.** Section 8 lists what to confirm on arrival and section 9 lists
-what documentation alone cannot settle.
+driver directly rather than trusting any single summary. **A physical unit was
+brought up on 2026-09-12** — connected, flashed, and run over its own USB-C
+with esptool v5.3.0 — and section 8 records what that confirmed. Section 9
+lists what documentation and that bring-up together still cannot settle.
