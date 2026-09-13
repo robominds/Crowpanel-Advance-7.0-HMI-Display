@@ -24,6 +24,20 @@ Before flashing, copy `include/secrets.h.template` to `include/secrets.h` and
 fill in your Wi-Fi credentials. `include/secrets.h` is gitignored; the template
 is not.
 
+**On macOS, install the CH340K driver first, or the upload command above will
+just fail to find a port.** This board's CH340K enumerates as `1a86:7522`, one
+digit off from the `1a86:7523` and `1a86:55d4` IDs Apple's built-in driver
+recognises, so macOS shows no `/dev/cu.*` device and `pio device list` shows
+nothing — the board looks absent, not driver-less. Install WCH's
+`CH34xVCPDriver` (<https://github.com/WCHSoftGroup/ch34xser_macos>, also on
+the Mac App Store) and approve it under System Settings → General → Login
+Items & Extensions → Driver Extensions; `systemextensionsctl list` shows
+`[activated waiting for user]` until you do. Don't install the older
+kernel-extension version of this driver — documented elsewhere to cause
+kernel panics — and don't have two CH34x drivers installed at once, which
+produces two ports, one of them dead. Full detail in `docs/HARDWARE.md`
+section 2.6.
+
 ## Layout
 
 | Path | Contents |
@@ -73,7 +87,7 @@ most expensive mistake available on this project; the full comparison is
 | Onboard extras | microSD, I2S | microSD, speaker, **mic, RTC, battery charger, buzzer, radio socket** |
 | Revisions | V1.0 – V3.0 | V1.0 – V1.5 |
 
-## Three things that will cost you an evening
+## Four things that will cost you an evening
 
 **The backlight is not a GPIO.** On this board there is no pin to PWM. Turning
 the panel on or dimming it means sending an I2C command to the STC8H1K28
@@ -97,16 +111,28 @@ through a CH340K bridge on UART0. Enabling CDC-on-boot retargets `Serial` to a
 USB-CDC peripheral that does not physically exist here, which produces a
 silently dead serial monitor with no error to explain it.
 
-## Nothing here has touched hardware yet
+**macOS does not recognise this board out of the box.** The CH340K's USB ID
+(`1a86:7522`) isn't one Apple's built-in serial driver matches, so the board
+enumerates but gets no `/dev/cu.*` node — it looks completely absent, not
+like a driver problem. See "Build and flash" above for the fix.
 
-The board has not arrived. Every pin assignment, timing value, and I2C address
-in this repository comes from Elecrow's committed source, schematics, and
-wiki — not from a scan of a physical unit. **No value in this project has been
-verified against hardware.** `docs/HARDWARE.md` section 8 is the checklist for
-what to check, roughly in order of what a wrong answer costs, the moment the
-board is in hand: board revision from the silkscreen, the module's laser
-marking, whether the backlight responds to the assumed encoding, an I2C bus
-scan, and so on through touch axis orientation and power supply headroom.
+## Hardware bring-up: 2026-09-12
+
+A unit is now connected, flashed, and running. Bring-up used esptool v5.3.0
+over the board's own USB-C and confirmed: the module is an N16R8, the board
+is revision V1.3 or later, touch answers at 0x5D on the first try, the panel
+runs at the documented 16 MHz pixel clock with a stable 800x480 image, and
+serial and upload both work as `docs/HARDWARE.md` predicted. It also
+surfaced one finding not in any vendor source — macOS needs a driver Apple
+doesn't ship before it will even see the board; see "Build and flash" above.
+
+`docs/HARDWARE.md` section 8 is now a record of what that bring-up checked
+and what it showed, not a checklist of what to do on arrival. Some things
+are still unverified: the PCF8563 real-time clock, the DIP switch positions
+as shipped (and so the audio, microphone and microSD paths behind them),
+whether the panel tolerates a pixel clock above 16 MHz, touch coordinate
+accuracy across the screen, and power supply headroom. Section 9 tracks what
+remains open.
 
 ## Verified so far
 
@@ -115,9 +141,22 @@ scan, and so on through touch axis orientation and power supply headroom.
   network.
 - `pio run -e advance_70` builds and links successfully: flash 1,526,863 of
   3,145,728 bytes (48.5%), internal RAM 185,544 of 327,680 bytes (56.6%).
+- The first hardware bring-up, 2026-09-12: module confirmed N16R8, board
+  confirmed V1.3 or later, touch at 0x5D, panel stable at 16 MHz, serial at
+  115200 with CDC off, and roughly a dozen uploads at 921600 with the hash
+  verified every time. Full detail in `docs/HARDWARE.md` section 8.
+- Display jitter root-caused and fixed: the LVGL draw buffers were in PSRAM,
+  contending with the RGB panel's own PSRAM scanout, and the touch driver was
+  taking two I2C reads per poll where one six-byte read does the job. Fixing
+  both eliminated the jitter; 80 MHz PSRAM was never the problem on this
+  unit.
+- Wi-Fi association took longer than six seconds on at least one attempt
+  during bring-up, which is why the retry interval isn't fixed (see commit
+  history).
 
-Nothing beyond that. The panel, touch, backlight, and both network sources are
-unverified until the board arrives.
+Still unverified: the PCF8563 RTC, the DIP switch positions as shipped, a
+pixel clock above 16 MHz, touch coordinate accuracy across the screen, and
+power supply headroom.
 
 ## License
 
