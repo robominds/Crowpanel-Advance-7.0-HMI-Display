@@ -580,16 +580,33 @@ formatting, empty. A write, read-back and remove cycle all passed.
   between separate runs several minutes apart —
   `2000-04-09 23:41:34`, then `23:48:17`, `23:49:32`, `23:50:36` and `23:52:03`
   across five runs — confirming the 32.768 kHz crystal (`Y1`) is alive.
-  **Its voltage-low flag (bit 7 of the seconds register) is set**
-  (`control1=0x08`, `control2=0x00`). That flag means the oscillator has
-  stopped at some point in this part's history, so the time it currently
-  reports is not trustworthy — exactly what an unset clock on a board nobody
-  has ever configured should say. It is **not** evidence of a fault, and
-  specifically it says nothing about whether the **CR1220** backup cell
-  (`BT1`, through a BAT54C) holds time across a power cycle. **That remains
-  completely untested.** The RTC's `#INT` is not wired to the ESP32.
-  No Elecrow sketch uses the RTC at all, though a `I2C_BM8563_RTC` library is
-  bundled unused in the examples folder.
+  **Its voltage-low flag (bit 7 of the seconds register) was found set**
+  (`control1=0x08`, `control2=0x00`) on the unconfigured clock. That flag
+  means the oscillator has stopped at some point in this part's history, so
+  the time it was reporting was not trustworthy — exactly what an unset clock
+  on a board nobody has ever configured should say. It was **not** evidence
+  of a fault.
+
+  **The CR1220 backup cell (`BT1`, through a BAT54C) is now confirmed to hold
+  time across a power cycle.** A third session on 2026-09-12, using the same
+  diagnostic, set the clock to the host's time, `2026-09-12 19:12:57`, with
+  the `set` command in `tools/diag/main.cpp`, and cleared the voltage-low flag
+  at the same time. Clearing the flag first is what makes the later reading
+  mean anything: it latches whenever the oscillator stops, so if it came back
+  set, the clock would have lost power regardless of what time it reported.
+  The USB cable was then physically removed, not merely reset, so the board
+  lost power entirely — a reset would not have tested the battery at all. On
+  reconnection the clock read `2026-09-12 19:17:09` with the flag still
+  clear, against a host clock of `19:17:15` — agreement within the latency of
+  the serial read, and no recorded oscillator stop. **Confirmed.** The same
+  method generalises to any part in this family: clear the flag, remove
+  power, read it back, rather than trusting a plausible-looking time — an
+  unset clock that has been running since power-up also reports a
+  plausible-looking time.
+
+  The RTC's `#INT` is not wired to the ESP32. No Elecrow sketch uses the RTC
+  at all, though a `I2C_BM8563_RTC` library is bundled unused in the examples
+  folder.
 - **Battery: `U2` = TP4059** charger, connector `J3` = PH2.0 2-pin, 3.7–4.2 V,
   with a charge LED. Status only via the STC8 over I2C.
 - **Buzzer:** passive. **GPIO8 on V1.0.** From V1.2 it moved to the STC8's `P2.7`
@@ -1016,6 +1033,31 @@ through items the first bring-up had left outstanding.
     value of GPIO0 — GPIO0 is the boot strap pin, and holding it low across a
     reset drops the board into the bootloader. See section 2.8.
 
+### A third round, same day, testing the battery backup
+
+A third session on 2026-09-12, with the same `tools/diag/main.cpp`
+diagnostic and `diag` environment, closed out the one item the second round
+left untouched because it required cutting power to the board.
+
+20. **RTC battery backup.** Confirmed: the CR1220 holds the real-time clock
+    across a full power cycle. The clock was set to the host's time,
+    `2026-09-12 19:12:57`, with the diagnostic's `set` command, and the
+    voltage-low flag was cleared at the same time — clearing it first is what
+    makes the later reading meaningful, since the flag only records whether
+    the oscillator has stopped since it was last cleared. The USB cable was
+    then physically removed, not merely reset, so the board lost power
+    entirely; a reset would not have exercised the battery at all. On
+    reconnection the clock read `2026-09-12 19:17:09` with the flag still
+    clear, against a host clock of `19:17:15` — agreement within the latency
+    of the serial read, and no recorded oscillator stop in between. Item 16
+    above, and question 5 in section 9, are both closed by this. See section
+    2.9.
+
+    This is also why the diagnostic takes commands over serial rather than
+    running a fixed sequence at boot: the board has to sit unpowered between
+    the two reads, and reflashing it in between would simply set the clock
+    again and defeat the test.
+
 ---
 
 ## 9. Open questions
@@ -1038,6 +1080,14 @@ through items the first bring-up had left outstanding.
    appears to be, and the 10 K pulldowns' implication that closed reads as 1
    held up under test. See sections 2.8 and 8.
 
+### Answered by the third round of testing
+
+1. **Whether the CR1220 backup cell holds RTC time across a power cycle.**
+   Yes. The clock was set and its voltage-low flag cleared, the USB cable was
+   then physically removed rather than the board reset, and on reconnection
+   the clock had kept correct time with the flag still clear. See sections
+   2.9 and 8.
+
 ### Still not resolvable from documentation, or from this bring-up
 
 1. **Whether 120 MHz PSRAM helps or hurts on this revision.** Vendor issue #7
@@ -1057,28 +1107,22 @@ through items the first bring-up had left outstanding.
     discouraged, and the part is not reflashable through the ESP32.
 4. **The buzzer command byte.** No example in the repository sounds the buzzer.
     246 and 247 come from the wiki and are untested.
-5. **Whether the CR1220 backup cell holds RTC time across a power cycle.**
-    Completely untested — the battery backup itself has not been touched. The
-    voltage-low flag being set (section 2.9) only says the oscillator has
-    stopped at some point in this part's history, which is expected on a board
-    nobody has ever set the clock on; it says nothing about whether the
-    battery can hold time going forward.
-6. **Whether V1.5 differs electrically from V1.4** beyond the touch FPC package.
+5. **Whether V1.5 differs electrically from V1.4** beyond the touch FPC package.
     Searching the V1.3, V1.4 and V1.5 schematics for every part discussed here
     returns identical results, which is presumably why Elecrow ship one example
     folder for all three.
-7. **The LMD3526's L/R channel select on V1.3+.** Its pull-up R34 is marked
+6. **The LMD3526's L/R channel select on V1.3+.** Its pull-up R34 is marked
     `10K/NC` and appears unfitted, so the pin floats. Elecrow's code is mono and
     sidesteps the question.
-8. **J11 pins 4 and 7 have no net** — mechanical only, or reserved, unknown.
-9. **Whether anyone has run on-device ESP-SR wake-word detection on this
+7. **J11 pins 4 and 7 have no net** — mechanical only, or reserved, unknown.
+8. **Whether anyone has run on-device ESP-SR wake-word detection on this
     board.** It is technically feasible and the patched core libraries even ship
     `esp_sr/srmodels.bin`, but Elecrow provide no example.
-10. **Reported PCF8563 read flakiness under ESPHome** — driver, bus contention,
+9. **Reported PCF8563 read flakiness under ESPHome** — driver, bus contention,
     or unit-specific, unknown.
-11. **The V1.4 wireless socket's S3-to-ESP32-C6 TX pin**, which vendor issue #6
+10. **The V1.4 wireless socket's S3-to-ESP32-C6 TX pin**, which vendor issue #6
     asks about and which remains unanswered.
-12. **The audio path, microphone and speaker.** Untouched by any bring-up so
+11. **The audio path, microphone and speaker.** Untouched by any bring-up so
     far. Note that the switch position that reaches the microSD card (S1=1,
     S0=1) is shared with the microphone, and that the speaker (S1=0, S0=0) is
     mutually exclusive with both.
