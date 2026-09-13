@@ -55,6 +55,21 @@ constexpr size_t WEATHER_CAPACITY =
 constexpr size_t  CHANNEL_COUNT           = 2;
 channel::Channel* g_channels[CHANNEL_COUNT] = {nullptr, nullptr};
 
+// Each chart gets a column count matched to its channel's cadence. This is not
+// cosmetic: a chart draws a line between adjacent columns, and LVGL breaks that
+// line wherever a column holds no data. Maple Valley contributes 48 readings in
+// twelve hours, so spread across 380 columns every one of them sits isolated
+// with empty columns either side and no line is ever drawn - which is exactly
+// what the first hardware bring-up showed. At 48 columns they are contiguous.
+//
+// Same order as g_channels: outdoor first, office second.
+constexpr uint16_t WEATHER_CHART_POINTS =
+    static_cast<uint16_t>(ui::CHART_WINDOW_MS / WEATHER_INTERVAL_MS);
+constexpr uint16_t OFFICE_CHART_POINTS = static_cast<uint16_t>(ui::CHART_POINTS);
+
+const uint16_t g_chart_points[CHANNEL_COUNT] = {WEATHER_CHART_POINTS,
+                                                OFFICE_CHART_POINTS};
+
 // Long-press anywhere toggles Celsius and Fahrenheit. Deliberately not a
 // button: the panel is meant to be read, not operated, and a stray brush
 // against the glass should not change the units.
@@ -152,7 +167,7 @@ void setup() {
         Serial.println("warning: touch unavailable");
     }
 
-    ui::init(g_channels, CHANNEL_COUNT);
+    ui::init(g_channels, g_chart_points, CHANNEL_COUNT);
     ui::refresh(millis());
 
     net::begin();

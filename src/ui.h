@@ -19,8 +19,8 @@
 
 namespace ui {
 
-// One bucket per two horizontal pixels of chart. Per-pixel would be wasteful
-// and makes the trace noisy at this width.
+// The WIDEST a chart may be. Each row's actual column count is chosen to match
+// its own channel's sample cadence and never exceeds this - see init().
 constexpr size_t CHART_POINTS = 380;
 
 constexpr uint32_t CHART_WINDOW_MS = 12UL * 60UL * 60UL * 1000UL;
@@ -31,7 +31,17 @@ constexpr size_t MAX_ROWS = 4;
 
 // Builds the widget tree. `channels` must outlive the UI. Call once, after
 // LVGL and the display are up.
-void init(channel::Channel** channels, size_t count);
+//
+// `chart_points` gives each row its own column count, and getting it right is
+// what makes a slow channel visible at all. A channel is drawn as a line
+// between adjacent columns, and LVGL breaks that line wherever a column has no
+// data. Give a channel that reports every fifteen minutes the full 380 columns
+// and its 48 readings land isolated with empty columns between them, so no line
+// is ever drawn. Sized to the cadence - window divided by interval - the
+// columns are contiguous and the line appears. Values are clamped to
+// [2, CHART_POINTS].
+void init(channel::Channel** channels, const uint16_t* chart_points,
+          size_t count);
 
 // Updates every row's readout and staleness from its channel. Safe to call
 // every loop; it touches the display only when a displayed value actually
