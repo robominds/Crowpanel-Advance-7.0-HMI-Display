@@ -43,7 +43,7 @@ the hold cannot change its mind.
 
 ### Brightness
 
-The backlight runs at full during the day and at 25% between sunset and
+The backlight runs at full during the day and at 5% between sunset and
 sunrise. The sun times come from the same Open-Meteo request that supplies the
 outdoor reading, and are compared against the board's own clock.
 
@@ -59,9 +59,15 @@ clock or the sun times are unknown, it stays at full — a panel that is
 mysteriously dim is worse than one that is too bright.
 
 The percentages are LED current, not perceived brightness. Eyes are roughly
-logarithmic, so 50% was barely distinguishable from full and 25% is the value
-that reads as actually dimmer. `NIGHT_PERCENT` in `src/brightness.h` is the one
-number to change.
+logarithmic, so the useful values are far lower than they look: on the real
+panel 50% was barely distinguishable from full, 25% was clearly dimmer, and 5%
+is where it settled. `NIGHT_PERCENT` in `src/brightness.h` is the one number to
+change.
+
+There is not much room below that. 5% sends byte 232 on a scale where 245 is
+off, so thirteen steps remain, and below roughly 3% the boost driver may not
+light the panel reliably. Nothing reads the backlight back, so the firmware
+cannot tell "very dim" from "off".
 
 ## Build and flash
 
