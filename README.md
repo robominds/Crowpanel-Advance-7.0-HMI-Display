@@ -61,6 +61,7 @@ section 2.6.
 | `src/source_mqtt.*` | The office reading, subscribed from the MQTT broker. |
 | `src/source_weather.*` | The Maple Valley reading, polled from Open-Meteo. |
 | `src/ui.*` | The screen: two stacked channel rows over a status bar. |
+| `tools/diag/` | Throwaway diagnostic for the real-time clock and the microSD card, neither of which the application touches. Its own `diag` environment; does not start the panel. |
 | `src/main.cpp` | Startup order and the main loop. |
 | `docs/HARDWARE.md` | The hardware reference this README summarizes. Read it before touching a GPIO. |
 
@@ -130,13 +131,17 @@ serial and upload both work as `docs/HARDWARE.md` predicted. It also
 surfaced one finding not in any vendor source — macOS needs a driver Apple
 doesn't ship before it will even see the board; see "Build and flash" above.
 
-`docs/HARDWARE.md` section 8 is now a record of what that bring-up checked
-and what it showed, not a checklist of what to do on arrival. Some things
-are still unverified: the PCF8563 real-time clock, the DIP switch positions
-as shipped (and so the audio, microphone and microSD paths behind them),
-whether the panel tolerates a pixel clock above 16 MHz, touch coordinate
-accuracy across the screen, and power supply headroom. Section 9 tracks what
-remains open.
+Two further rounds of testing the same day, using `tools/diag/`, confirmed the
+PCF8563 real-time clock at 0x51 — an address that until then came only from
+the part's datasheet, since no Elecrow example touches the chip — and the
+microSD card at the full 40 MHz. The CR1220 backup cell holds the clock across
+a full power cycle, so wall-clock time survives a reboot.
+
+`docs/HARDWARE.md` section 8 is now a record of what those rounds checked and
+what they showed, not a checklist of what to do on arrival. Still unverified:
+the audio path, microphone and speaker, whether the panel tolerates a pixel
+clock above 16 MHz, touch coordinate accuracy across the screen, and power
+supply headroom. Section 9 tracks what remains open.
 
 ## Verified so far
 
@@ -158,9 +163,20 @@ remains open.
   during bring-up, which is why the retry interval isn't fixed (see commit
   history).
 
-Still unverified: the PCF8563 RTC, the DIP switch positions as shipped, a
-pixel clock above 16 MHz, touch coordinate accuracy across the screen, and
-power supply headroom.
+- The PCF8563 real-time clock answers at 0x51 and its oscillator runs. The
+  CR1220 backup cell holds it across a full power cycle: set to 19:12:57, the
+  cable pulled, and it read back 19:17:09 with the voltage-low flag still
+  clear. Wall-clock time survives a reboot, which the firmware does not yet
+  take advantage of.
+- The microSD card mounts at the full 40 MHz — SDHC, 29554 MB — and a write,
+  read-back and remove cycle passes. It is reachable only with both DIP
+  switches at the position labelled 1, confirmed by working through all four
+  combinations while a live pin probe watched.
+
+Still unverified: the audio path, microphone and speaker (the switch position
+that reaches the card is shared with the microphone, and the speaker is
+mutually exclusive with the card), a pixel clock above 16 MHz, touch
+coordinate accuracy across the screen, and power supply headroom.
 
 ## License
 
