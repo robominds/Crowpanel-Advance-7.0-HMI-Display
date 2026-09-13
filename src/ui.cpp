@@ -57,10 +57,20 @@ bool g_fahrenheit = true;
 
 history::SampleHistory::Bucket g_buckets[CHART_POINTS];
 
-// The time axis is fixed: every chart shows the same twelve-hour window, with
-// "now" at the right-hand edge where the live trace arrives. LVGL keeps this
-// pointer rather than copying, so it has to outlive every call.
-const char* kTimeLabels[] = {"-12h", "-9h", "-6h", "-3h", "now", nullptr};
+// The time axis. Every chart shows the same twelve-hour window with the newest
+// data at the right-hand edge, so one set of labels serves both rows.
+//
+// LVGL keeps these pointers rather than copying the strings, so the buffers
+// have to outlive every call - which is also what lets setClock() rewrite them
+// in place and just invalidate the scales.
+constexpr size_t TIME_LABELS = 5;
+char             g_time_lab[TIME_LABELS][8] = {"-12h", "-9h", "-6h", "-3h", "now"};
+const char*      kTimeLabels[TIME_LABELS + 1] = {
+    g_time_lab[0], g_time_lab[1], g_time_lab[2],
+    g_time_lab[3], g_time_lab[4], nullptr};
+
+// Hours before the right-hand edge that each label marks.
+constexpr int TIME_LABEL_HOURS[TIME_LABELS] = {12, 9, 6, 3, 0};
 
 constexpr int Y_AXIS_W = 68;   // room for the degree labels and their ticks
 constexpr int X_AXIS_H = 36;   // room for the time labels and their ticks
@@ -344,6 +354,36 @@ void setStatus(bool wifi_up, bool mqtt_up) {
     }
     if (g_status_mqtt != nullptr) {
         lv_label_set_text(g_status_mqtt, mqtt_up ? "mqtt ok" : "mqtt down");
+    }
+}
+
+void setClock(bool have_time, time_t now) {
+    static bool   last_have = false;
+    static time_t last_slot = -1;
+
+    // The labels change only once a minute, and rewriting them forces both
+    // scales to redraw. Doing that every loop would put the panel back under
+    // exactly the redraw pressure the rest of this file works to avoid.
+    const time_t slot = have_time ? (now / 60) : -1;
+    if (have_time == last_have && slot == last_slot) return;
+    last_have = have_time;
+    last_slot = slot;
+
+    for (size_t i = 0; i < TIME_LABELS; ++i) {
+        if (!have_time) {
+            static const char* kRelative[TIME_LABELS] = {"-12h", "-9h", "-6h",
+                                                         "-3h", "now"};
+            snprintf(g_time_lab[i], sizeof(g_time_lab[i]), "%s", kRelative[i]);
+            continue;
+        }
+        const time_t t = now - static_cast<time_t>(TIME_LABEL_HOURS[i]) * 3600;
+        struct tm    lt;
+        localtime_r(&t, &lt);
+        strftime(g_time_lab[i], sizeof(g_time_lab[i]), "%H:%M", &lt);
+    }
+
+    for (size_t r = 0; r < g_row_count; ++r) {
+        if (g_rows[r].x_scale != nullptr) lv_obj_invalidate(g_rows[r].x_scale);
     }
 }
 

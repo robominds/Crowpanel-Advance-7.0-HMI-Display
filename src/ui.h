@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <ctime>
 
 #include "Channel.h"
 
@@ -54,6 +55,18 @@ void updateChart(size_t row);
 
 // Connection state for the status bar.
 void setStatus(bool wifi_up, bool mqtt_up);
+
+// Relabels the time axis from the wall clock, so it reads 07:25, 10:25, 13:25
+// and so on rather than -12h, -9h, -6h. `now` is a local-time epoch and marks
+// the right-hand edge of the window.
+//
+// Pass have_time false when the clock is not known, and the axis reverts to the
+// relative labels. An axis that invents a plausible-looking time is worse than
+// one that admits it does not know.
+//
+// Cheap to call repeatedly: it rewrites the labels only when the displayed
+// minute actually changes.
+void setClock(bool have_time, time_t now);
 
 // Celsius or Fahrenheit. Conversion happens at display time; history always
 // stores Celsius.

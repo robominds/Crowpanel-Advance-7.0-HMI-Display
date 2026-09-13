@@ -20,6 +20,7 @@
 #include "board_pins.h"
 #include "display_driver.h"
 #include "net.h"
+#include "rtc.h"
 #include "panel_mcu.h"
 #include "source_mqtt.h"
 #include "source_weather.h"
@@ -74,6 +75,13 @@ const uint16_t g_chart_points[CHANNEL_COUNT] = {WEATHER_CHART_POINTS,
 // button: the panel is meant to be read, not operated, and a stray brush
 // against the glass should not change the units.
 constexpr uint32_t UNIT_TOGGLE_HOLD_MS = 1000;
+
+// Local time for the chart axis. Maple Valley is America/Los_Angeles, matching
+// the coordinates the weather source asks about. A POSIX rule rather than a
+// zone name so no timezone database has to be carried.
+#ifndef DISPLAY_TZ
+#define DISPLAY_TZ "PST8PDT,M3.2.0,M11.1.0"
+#endif
 
 void pollUnitToggle() {
     static uint32_t press_started_ms = 0;
@@ -148,6 +156,10 @@ void setup() {
     Wire.begin(board::I2C_SDA, board::I2C_SCL, board::I2C_HZ);
     delay(50);
 
+    // Before anything wants the time. The backup cell holds this across a cold
+    // boot, so the axis can be labelled correctly long before Wi-Fi associates.
+    rtc::begin(DISPLAY_TZ);
+
     if (!panel_mcu::begin()) {
         // Not fatal on its own, but the backlight will not come on, so say so
         // loudly rather than leaving a dark screen unexplained.
@@ -186,6 +198,7 @@ void loop() {
     lv_timer_handler();
 
     net::poll();
+    rtc::poll(net::connected());
     source_mqtt::poll();
     source_weather::poll();
 
@@ -195,6 +208,7 @@ void loop() {
     const uint32_t now = millis();
     ui::refresh(now);
     ui::setStatus(net::connected(), source_mqtt::connected());
+    ui::setClock(rtc::hasTime(), time(nullptr));
     pollCharts();
 
     // Yield. Starving the RGB panel's DMA is one of the three documented causes
