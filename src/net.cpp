@@ -13,7 +13,12 @@
 namespace net {
 namespace {
 
-constexpr uint32_t RETRY_MIN_MS = 2000;
+// Six seconds, not two. A WPA2 association plus DHCP commonly takes three to
+// five seconds, and the first bring-up on real hardware showed a two-second
+// retry firing underneath an attempt still in flight: WiFi.begin() then fails
+// outright with "sta is connecting, cannot set config" and the attempt it
+// interrupted is wasted. The floor has to clear a normal association.
+constexpr uint32_t RETRY_MIN_MS = 6000;
 constexpr uint32_t RETRY_MAX_MS = 60000;
 
 uint32_t g_retry_ms     = RETRY_MIN_MS;
