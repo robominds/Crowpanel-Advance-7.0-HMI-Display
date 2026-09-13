@@ -71,10 +71,19 @@ constexpr uint16_t OFFICE_CHART_POINTS = static_cast<uint16_t>(ui::CHART_POINTS)
 const uint16_t g_chart_points[CHANNEL_COUNT] = {WEATHER_CHART_POINTS,
                                                 OFFICE_CHART_POINTS};
 
-// Long-press anywhere toggles Celsius and Fahrenheit. Deliberately not a
-// button: the panel is meant to be read, not operated, and a stray brush
-// against the glass should not change the units.
-constexpr uint32_t UNIT_TOGGLE_HOLD_MS = 1000;
+// Long press, deliberately not a button: the panel is meant to be read, not
+// operated, and a stray brush against the glass should change nothing.
+//
+// Where the press STARTS decides what it does. The top-right corner switches
+// between the chart view and the clock view; anywhere else toggles Celsius and
+// Fahrenheit, in either view.
+constexpr uint32_t LONG_PRESS_HOLD_MS = 1000;
+
+// A fifth of the width and a quarter of the height. Big enough to hit on
+// purpose without looking, small enough that reaching across the glass for the
+// unit toggle does not land in it by accident.
+constexpr int16_t CORNER_W = 160;
+constexpr int16_t CORNER_H = 120;
 
 // Local time for the chart axis. Maple Valley is America/Los_Angeles, matching
 // the coordinates the weather source asks about. A POSIX rule rather than a
@@ -83,9 +92,11 @@ constexpr uint32_t UNIT_TOGGLE_HOLD_MS = 1000;
 #define DISPLAY_TZ "PST8PDT,M3.2.0,M11.1.0"
 #endif
 
-void pollUnitToggle() {
+void pollLongPress() {
     static uint32_t press_started_ms = 0;
     static bool     handled          = false;
+    static int16_t  start_x          = 0;
+    static int16_t  start_y          = 0;
 
     if (!touch_pressed()) {
         press_started_ms = 0;
@@ -96,20 +107,35 @@ void pollUnitToggle() {
     const uint32_t now = millis();
     if (press_started_ms == 0) {
         press_started_ms = now;
+        // Latch where the press BEGAN. Reading the live position instead would
+        // let a finger that drifts during the hold change which action fires.
+        start_x = touch_x();
+        start_y = touch_y();
         return;
     }
 
-    if (!handled && (now - press_started_ms) >= UNIT_TOGGLE_HOLD_MS) {
-        handled = true;
+    if (handled || (now - press_started_ms) < LONG_PRESS_HOLD_MS) return;
+    handled = true;
+
+    const bool in_corner = (start_x >= board::LCD_WIDTH - CORNER_W) &&
+                           (start_y < CORNER_H);
+
+    if (in_corner) {
+        ui::toggleView();
+        Serial.printf("view: %s\n",
+                      ui::view() == ui::View::Clock ? "clock" : "charts");
+    } else {
         ui::setFahrenheit(!ui::fahrenheit());
         Serial.printf("units: %s\n", ui::fahrenheit() ? "F" : "C");
     }
 }
 
+
 // Redraws a row's chart when its channel has gained a sample. Keyed on the
-// newest sample's timestamp, not the history buffer's size: size_ stops
-// growing once the ring buffer fills, so comparing it would freeze the chart
-// after roughly twelve hours of uptime while the readout kept updating.
+// newest reading's TIMESTAMP, not on history size: size stops changing once the
+// ring buffer fills, which would silently freeze every chart about twelve hours
+// after boot. Inequality rather than ordering, so it survives the millis()
+// rollover.
 void pollCharts() {
     static uint32_t last_t_ms[CHANNEL_COUNT] = {0};
     static bool     seen[CHANNEL_COUNT]      = {false};
@@ -118,8 +144,8 @@ void pollCharts() {
         const channel::Reading& r = g_channels[i]->latest();
         if (!r.valid) continue;
         if (seen[i] && r.t_ms == last_t_ms[i]) continue;
-        seen[i]        = true;
-        last_t_ms[i]   = r.t_ms;
+        seen[i]      = true;
+        last_t_ms[i] = r.t_ms;
         ui::updateChart(i);
     }
 }
@@ -203,7 +229,7 @@ void loop() {
     source_weather::poll();
 
     touch_poll();
-    pollUnitToggle();
+    pollLongPress();
 
     const uint32_t now = millis();
     ui::refresh(now);

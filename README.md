@@ -2,7 +2,7 @@
 
 Firmware for the Elecrow CrowPanel Advance 7.0-HMI ESP32-S3 display (SKU
 `DIS02170A`, ESP32-S3-WROOM-1-N16R8, IPS 800x480). It shows two temperature
-readings, each with humidity and a twelve-hour scrolling chart:
+readings, each with humidity, in either of two views:
 
 - **Maple Valley** — outdoor conditions, fetched from the [Open-Meteo](https://open-meteo.com/)
   public API over plain HTTP. No API key.
@@ -10,12 +10,36 @@ readings, each with humidity and a twelve-hour scrolling chart:
   `192.0.2.10:1883`. The broker accepts anonymous connections; there is
   nothing to authenticate.
 
-![The display showing both channels live, each with a twelve-hour chart](docs/display.png)
+## The two views
 
-Running on hardware: the panel comes up at its documented 16 MHz pixel clock,
-touch answers at 0x5D on the first try, and both sources feed the display over
-Wi-Fi. The photograph above was taken shortly after a reflash, which is why each
+**Clock**, which is what the panel shows at power-up. The time in large digits
+across the top, the outdoor reading in the lower left and the indoor one in the
+lower right, humidity small beneath each, white on black. No captions: position
+says which is which, in the same order the chart rows are stacked. The time
+comes from the board's own real-time clock, so it is right within seconds of
+power-up, before Wi-Fi has associated.
+
+**Charts**, the same two readings with twelve hours of history each, over a
+status bar.
+
+![The chart view, both channels live with their twelve-hour history](docs/display.png)
+
+The photograph shows the chart view shortly after a reflash, which is why each
 chart holds a single point — history lives in RAM and starts empty at boot.
+
+### Touch
+
+Two gestures, both a long press of about a second. Deliberately not buttons: the
+panel is meant to be read, not operated, and a stray brush against the glass
+should change nothing.
+
+| Where | What |
+| --- | --- |
+| Top-right corner, 160 x 120 px | Switch between the clock and the charts, either direction |
+| Anywhere else | Toggle between Fahrenheit and Celsius, in either view |
+
+Where the press *starts* decides which fires, so a finger that drifts during
+the hold cannot change its mind.
 
 ## Build and flash
 
@@ -60,7 +84,8 @@ section 2.6.
 | `src/net.*` | Wi-Fi with non-blocking reconnection. |
 | `src/source_mqtt.*` | The office reading, subscribed from the MQTT broker. |
 | `src/source_weather.*` | The Maple Valley reading, polled from Open-Meteo. |
-| `src/ui.*` | The screen: two stacked channel rows over a status bar. |
+| `src/ui.*` | Both views — the stacked chart rows and the clock — and the switch between them. |
+| `src/rtc.*` | Wall-clock time: the PCF8563 at boot, the network for accuracy, written back so a cold boot starts correct. |
 | `tools/diag/` | Throwaway diagnostic for the real-time clock and the microSD card, neither of which the application touches. Its own `diag` environment; does not start the panel. |
 | `src/main.cpp` | Startup order and the main loop. |
 | `docs/HARDWARE.md` | The hardware reference this README summarizes. Read it before touching a GPIO. |

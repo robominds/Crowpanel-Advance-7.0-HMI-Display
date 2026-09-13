@@ -30,6 +30,20 @@ constexpr uint32_t CHART_WINDOW_MS = 12UL * 60UL * 60UL * 1000UL;
 // channel is a row height change rather than a rewrite.
 constexpr size_t MAX_ROWS = 4;
 
+// Which of the two layouts is on screen.
+//
+//   Charts  two stacked channel rows with twelve-hour charts, over a status bar
+//   Clock   the time in large digits, with each channel's reading beneath it
+//
+// Both trees are built once and live for the life of the program; switching
+// hides one and shows the other. That keeps the charts current while they are
+// out of sight, so coming back is instant rather than a rebuild.
+enum class View { Charts, Clock };
+
+void setView(View v);
+void toggleView();
+View view();
+
 // Builds the widget tree. `channels` must outlive the UI. Call once, after
 // LVGL and the display are up.
 //

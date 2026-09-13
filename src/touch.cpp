@@ -138,3 +138,6 @@ void touch_poll() {
 }
 
 bool touch_pressed() { return g_pressed; }
+
+int16_t touch_x() { return g_x; }
+int16_t touch_y() { return g_y; }
