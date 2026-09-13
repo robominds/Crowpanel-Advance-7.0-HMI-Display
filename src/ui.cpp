@@ -9,8 +9,18 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "board_pins.h"
+
+// Real 144 px and 72 px Montserrat, generated from LVGL's own source TTF and
+// subset to the handful of characters the clock view uses. Rendering at the
+// actual size instead of transform-scaling a 48 px font is the difference
+// between crisp glyphs and interpolated ones - a transform resamples a bitmap
+// that was never drawn at this size, and at 3x that is plainly visible next to
+// natively-rendered text.
+extern const lv_font_t clock_font_144;   // 0-9 : . - and space
+extern const lv_font_t clock_font_72;    // A P M
 
 namespace ui {
 namespace {
@@ -67,44 +77,46 @@ constexpr View DEFAULT_VIEW = View::Clock;
 View      g_view          = DEFAULT_VIEW;
 lv_obj_t* g_chart_root    = nullptr;   // everything the chart view owns
 lv_obj_t* g_clock_view    = nullptr;
-lv_obj_t* g_clock_time    = nullptr;
-lv_obj_t* g_clock_temp[MAX_ROWS] = {nullptr};
+lv_obj_t* g_clock_time    = nullptr;   // the digits, "12:45"
+lv_obj_t* g_clock_ampm    = nullptr;   // "PM", half the digits' size
+lv_obj_t* g_clock_date    = nullptr;   // "Saturday 13 September 2026"
+lv_obj_t* g_clock_temp[MAX_ROWS] = {nullptr};   // whole degrees, 144 px
+lv_obj_t* g_clock_frac[MAX_ROWS] = {nullptr};   // ".2", half that
 lv_obj_t* g_clock_hum[MAX_ROWS]  = {nullptr};
 
-constexpr int CLOCK_TIME_H = 200;   // the band the time occupies
+// Vertical budget for the clock view, all of it tight: at 3x, a 48 px label's
+// box is about 200 px tall, and there are two of those to fit above and below
+// the date. These values were derived from that arithmetic rather than guessed,
+// because the failure mode is silent - the digits clip off the top of the panel
+// and the readings collide with their humidity.
+constexpr int CLOCK_TIME_H = 230;   // the band the time and date occupy
+constexpr int CLOCK_TIME_Y = 70;    // top of the digits' unscaled box
+constexpr int CLOCK_DATE_Y = 185;   // top of the date line
+constexpr int CLOCK_AMPM_GAP = 16;  // between the digits and AM/PM
+constexpr int CLOCK_FRAC_GAP = 4;   // between whole degrees and the tenth
+constexpr int CLOCK_TEMP_Y   = 14;  // top of the reading, within its quadrant
 
-// How far the clock view's text may be scaled, in LVGL's fixed-point scale
-// where 256 is 1:1. 768 is three times the 48 px font.
-//
-// Every string here fits at 3x - the widest time, "12:34 AM", is 624 px of the
-// 768 available, and the widest reading, "100.0", is 390 px of 384 in its
-// quadrant - so the time and both readings all land at exactly this size rather
-// than each finding its own. Uniform is what makes the layout look deliberate.
-// fitLabel still measures, so a string that would not fit shrinks instead of
-// clipping.
-constexpr int32_t CLOCK_SCALE_MAX = 768;
+// Scratch for one chart redraw. Static because a downsample runs on every new
+// sample and this is the largest chart any row can ask for.
+history::SampleHistory::Bucket g_buckets[CHART_POINTS];
 
-// Scales a label to the largest size that still fits its box, never past
-// `cap`. Measuring beats hard-coding a multiplier: the strings change width as
-// the data does - "8:17 PM" against "12:34 AM", "64.2 F" against "100.0 F" -
-// and a fixed multiplier that fits one will overflow the other. Width is
-// usually what binds, not height.
-void fitLabel(lv_obj_t* label, const char* text, int32_t max_w, int32_t max_h,
-              int32_t cap) {
-    lv_point_t sz;
-    lv_text_get_size(&sz, text, &lv_font_montserrat_48, 0, 0, LV_COORD_MAX,
-                     LV_TEXT_FLAG_NONE);
-    if (sz.x <= 0 || sz.y <= 0) return;
-
-    const int32_t by_w = max_w * 256 / sz.x;
-    const int32_t by_h = max_h * 256 / sz.y;
-    int32_t       s    = by_w < by_h ? by_w : by_h;
-    if (s > cap) s = cap;
-    if (s < 256) s = 256;   // never shrink below the font's own size
-    lv_obj_set_style_transform_scale(label, s, 0);
+float toDisplay(float celsius) {
+    return g_fahrenheit ? (celsius * 9.0f / 5.0f + 32.0f) : celsius;
 }
 
-history::SampleHistory::Bucket g_buckets[CHART_POINTS];
+// lv_chart works in integers. Everything handed to a chart - both the series
+// values and the axis range - is therefore multiplied by this, giving tenths of
+// a degree instead of whole degrees. Without it an office that drifts two
+// degrees over twelve hours draws as a two-step staircase. Remove the factor
+// from one of the two and the trace leaves the visible range entirely, so keep
+// them in step.
+constexpr float CHART_SCALE = 10.0f;
+
+int32_t toChart(float display_value) {
+    // Round, not truncate: truncation biases every point toward zero, which on
+    // a Fahrenheit trace is a consistent tenth-of-a-degree downward shift.
+    return static_cast<int32_t>(std::lroundf(display_value * CHART_SCALE));
+}
 
 // The time axis. Every chart shows the same twelve-hour window with the newest
 // data at the right-hand edge, so one set of labels serves both rows.
@@ -143,22 +155,63 @@ void styleScale(lv_obj_t* scale) {
     lv_obj_set_style_text_font(scale, &lv_font_montserrat_16, LV_PART_INDICATOR);
 }
 
-float toDisplay(float celsius) {
-    return g_fahrenheit ? (celsius * 9.0f / 5.0f + 32.0f) : celsius;
+// Places a large label and a small one as a single centred, baseline-aligned
+// unit, and returns where each should sit relative to the pair's centre.
+//
+// Baselines, not line boxes. A line box carries descender space below the
+// baseline proportional to the font size, so matching box bottoms leaves the
+// smaller text sitting low by the difference. None of the strings here has a
+// descender, so a baseline is the visible bottom edge.
+struct PairOffsets {
+    int32_t big_dx;
+    int32_t small_dx;
+    int32_t small_dy;   // added to the big label's y
+};
+
+PairOffsets pairOffsets(const char* big_text, const lv_font_t* big_font,
+                        const char* small_text, const lv_font_t* small_font,
+                        int32_t gap) {
+    lv_point_t b{}, sm{};
+    lv_text_get_size(&b, big_text, big_font, 0, 0, LV_COORD_MAX,
+                     LV_TEXT_FLAG_NONE);
+    lv_text_get_size(&sm, small_text, small_font, 0, 0, LV_COORD_MAX,
+                     LV_TEXT_FLAG_NONE);
+
+    PairOffsets o;
+    o.big_dx   = -(gap + sm.x) / 2;
+    o.small_dx = (b.x + gap) / 2;
+    o.small_dy = (big_font->line_height - big_font->base_line) -
+                 (small_font->line_height - small_font->base_line);
+    return o;
 }
 
-// lv_chart works in integers. Everything handed to a chart - both the series
-// values and the axis range - is therefore multiplied by this, giving tenths of
-// a degree instead of whole degrees. Without it an office that drifts two
-// degrees over twelve hours draws as a two-step staircase. Remove the factor
-// from one of the two and the trace leaves the visible range entirely, so keep
-// them in step.
-constexpr float CHART_SCALE = 10.0f;
+void layoutClockTime(const char* digits, const char* ampm) {
+    if (g_clock_time == nullptr) return;
 
-int32_t toChart(float display_value) {
-    // Round, not truncate: truncation biases every point toward zero, which on
-    // a Fahrenheit trace is a consistent tenth-of-a-degree downward shift.
-    return static_cast<int32_t>(std::lroundf(display_value * CHART_SCALE));
+    const bool has_ampm = (ampm != nullptr) && (ampm[0] != '\0');
+    if (!has_ampm) {
+        lv_obj_align(g_clock_time, LV_ALIGN_TOP_MID, 0, CLOCK_TIME_Y);
+        if (g_clock_ampm != nullptr) lv_label_set_text(g_clock_ampm, "");
+        return;
+    }
+
+    const PairOffsets o = pairOffsets(digits, &clock_font_144, ampm,
+                                      &clock_font_72, CLOCK_AMPM_GAP);
+    lv_obj_align(g_clock_time, LV_ALIGN_TOP_MID, o.big_dx, CLOCK_TIME_Y);
+    lv_obj_align(g_clock_ampm, LV_ALIGN_TOP_MID, o.small_dx,
+                 CLOCK_TIME_Y + o.small_dy);
+}
+
+// Same treatment for a reading: whole degrees large, the tenth half size and
+// sitting on the same baseline.
+void layoutClockTemp(size_t i, const char* whole, const char* frac) {
+    if (g_clock_temp[i] == nullptr) return;
+
+    const PairOffsets o = pairOffsets(whole, &clock_font_144, frac,
+                                      &clock_font_72, CLOCK_FRAC_GAP);
+    lv_obj_align(g_clock_temp[i], LV_ALIGN_TOP_MID, o.big_dx, CLOCK_TEMP_Y);
+    lv_obj_align(g_clock_frac[i], LV_ALIGN_TOP_MID, o.small_dx,
+                 CLOCK_TEMP_Y + o.small_dy);
 }
 
 void buildRow(Row& row, int y, int height) {
@@ -278,7 +331,7 @@ void buildClockView(size_t count) {
     }
 
     g_clock_time = lv_label_create(g_clock_view);
-    lv_obj_set_style_text_font(g_clock_time, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(g_clock_time, &clock_font_144, 0);
     lv_obj_set_style_text_color(g_clock_time, lv_color_white(), 0);
     lv_label_set_text(g_clock_time, "--:--");
 
@@ -287,9 +340,18 @@ void buildClockView(size_t count) {
     // twice actual size in LVGL's fixed-point scale, where 256 is 1:1. Scaled
     // glyphs are a little softer than natively rendered ones; at this size and
     // across a room that trade is worth it.
-    lv_obj_set_style_transform_pivot_x(g_clock_time, LV_PCT(50), 0);
-    lv_obj_set_style_transform_pivot_y(g_clock_time, LV_PCT(50), 0);
-    lv_obj_align(g_clock_time, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_align(g_clock_time, LV_ALIGN_TOP_MID, 0, CLOCK_TIME_Y);
+
+    g_clock_ampm = lv_label_create(g_clock_view);
+    lv_obj_set_style_text_font(g_clock_ampm, &clock_font_72, 0);
+    lv_obj_set_style_text_color(g_clock_ampm, lv_color_white(), 0);
+    lv_label_set_text(g_clock_ampm, "");
+
+    g_clock_date = lv_label_create(g_clock_view);
+    lv_obj_set_style_text_font(g_clock_date, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_color(g_clock_date, lv_color_white(), 0);
+    lv_label_set_text(g_clock_date, "");
+    lv_obj_align(g_clock_date, LV_ALIGN_TOP_MID, 0, CLOCK_DATE_Y);
 
     const int w = board::LCD_WIDTH / static_cast<int>(count);
     for (size_t i = 0; i < count; ++i) {
@@ -302,18 +364,26 @@ void buildClockView(size_t count) {
         lv_obj_clear_flag(q, LV_OBJ_FLAG_SCROLLABLE);
 
         g_clock_temp[i] = lv_label_create(q);
-        lv_obj_set_style_text_font(g_clock_temp[i], &lv_font_montserrat_48, 0);
+        lv_obj_set_style_text_font(g_clock_temp[i], &clock_font_144, 0);
         lv_obj_set_style_text_color(g_clock_temp[i], lv_color_white(), 0);
+        // Clip rather than wrap. "100.0" at 144 px is a hair wider than half
+        // the panel; losing a few pixels off an extreme reading is far better
+        // than it silently becoming two lines and wrecking the layout.
+        lv_label_set_long_mode(g_clock_temp[i], LV_LABEL_LONG_CLIP);
         lv_label_set_text(g_clock_temp[i], "--");
-        lv_obj_set_style_transform_pivot_x(g_clock_temp[i], LV_PCT(50), 0);
-        lv_obj_set_style_transform_pivot_y(g_clock_temp[i], LV_PCT(50), 0);
-        lv_obj_align(g_clock_temp[i], LV_ALIGN_CENTER, 0, -35);
+        lv_obj_align(g_clock_temp[i], LV_ALIGN_TOP_MID, 0, CLOCK_TEMP_Y);
+
+        g_clock_frac[i] = lv_label_create(q);
+        lv_obj_set_style_text_font(g_clock_frac[i], &clock_font_72, 0);
+        lv_obj_set_style_text_color(g_clock_frac[i], lv_color_white(), 0);
+        lv_label_set_long_mode(g_clock_frac[i], LV_LABEL_LONG_CLIP);
+        lv_label_set_text(g_clock_frac[i], "");
 
         g_clock_hum[i] = lv_label_create(q);
         lv_obj_set_style_text_font(g_clock_hum[i], &lv_font_montserrat_28, 0);
         lv_obj_set_style_text_color(g_clock_hum[i], lv_color_white(), 0);
         lv_label_set_text(g_clock_hum[i], "--");
-        lv_obj_align(g_clock_hum[i], LV_ALIGN_CENTER, 0, 85);
+        lv_obj_align(g_clock_hum[i], LV_ALIGN_BOTTOM_MID, 0, -12);
     }
 }
 
@@ -389,6 +459,7 @@ void refresh(uint32_t now_ms) {
             lv_label_set_text(row.note, "waiting");
             if (g_clock_temp[i] != nullptr) {
                 lv_label_set_text(g_clock_temp[i], "--");
+                lv_label_set_text(g_clock_frac[i], "");
                 lv_label_set_text(g_clock_hum[i], "--");
             }
         } else {
@@ -404,20 +475,29 @@ void refresh(uint32_t now_ms) {
             // The clock view carries the same numbers without captions, and
             // without a unit suffix: dropping " F" takes the string from six
             // characters to four, which is worth about a third more height once
-            // fitLabel scales it to the quadrant. The chart view still names
+            // it is rendered. The chart view still names
             // the unit, and at these two ranges a Celsius reading is not going
             // to be mistaken for a Fahrenheit one.
             if (g_clock_temp[i] != nullptr) {
                 snprintf(buf, sizeof(buf), "%.1f", toDisplay(r.temperature_c));
-                lv_label_set_text(g_clock_temp[i], buf);
-                fitLabel(g_clock_temp[i], buf,
-                         board::LCD_WIDTH / static_cast<int>(g_row_count) - 16,
-                         180, CLOCK_SCALE_MAX);
-                lv_obj_align(g_clock_temp[i], LV_ALIGN_CENTER, 0, -35);
+
+                // Split at the decimal point: whole degrees carry the reading,
+                // the tenth is detail, so it is set at half the size on the
+                // same baseline rather than competing for attention.
+                char whole[16];
+                char frac[8] = "";
+                snprintf(whole, sizeof(whole), "%s", buf);
+                if (char* dot = strchr(whole, '.')) {
+                    snprintf(frac, sizeof(frac), "%s", dot);
+                    *dot = '\0';
+                }
+                lv_label_set_text(g_clock_temp[i], whole);
+                lv_label_set_text(g_clock_frac[i], frac);
+                layoutClockTemp(i, whole, frac);
 
                 snprintf(buf, sizeof(buf), "%.0f%% RH", r.humidity_pct);
                 lv_label_set_text(g_clock_hum[i], buf);
-                lv_obj_align(g_clock_hum[i], LV_ALIGN_CENTER, 0, 85);
+                lv_obj_align(g_clock_hum[i], LV_ALIGN_BOTTOM_MID, 0, -12);
             }
         }
 
@@ -428,6 +508,7 @@ void refresh(uint32_t now_ms) {
         lv_obj_set_style_text_opa(row.humidity, opa, 0);
         if (g_clock_temp[i] != nullptr) {
             lv_obj_set_style_text_opa(g_clock_temp[i], opa, 0);
+            lv_obj_set_style_text_opa(g_clock_frac[i], opa, 0);
             lv_obj_set_style_text_opa(g_clock_hum[i], opa, 0);
         }
     }
@@ -542,22 +623,33 @@ void setClock(bool have_time, time_t now) {
     // AM/PM and no seconds: five or seven characters, so the digits stay as
     // large as the panel allows.
     if (g_clock_time != nullptr) {
-        if (!have_time) {
-            lv_label_set_text(g_clock_time, "--:--");
-        } else {
+        char digits[16] = "--:--";
+        char ampm[8]    = "";
+        char date[48]   = "";
+
+        if (have_time) {
             struct tm lt;
             localtime_r(&now, &lt);
-            char big[16];
-            strftime(big, sizeof(big), "%l:%M %p", &lt);
-            // %l pads single-digit hours with a leading space; drop it so the
-            // string stays centred on its own width.
-            const char* p = big;
-            while (*p == ' ') ++p;
-            lv_label_set_text(g_clock_time, p);
+
+            // %l is the hour without a leading zero, but padded with a space;
+            // drop it so the pair centres on its own width.
+            char raw[16];
+            strftime(raw, sizeof(raw), "%l:%M", &lt);
+            const char* q = raw;
+            while (*q == ' ') ++q;
+            snprintf(digits, sizeof(digits), "%s", q);
+
+            strftime(ampm, sizeof(ampm), "%p", &lt);
+            strftime(date, sizeof(date), "%A %d %B %Y", &lt);
         }
-        fitLabel(g_clock_time, lv_label_get_text(g_clock_time),
-                 board::LCD_WIDTH - 32, CLOCK_TIME_H - 40, CLOCK_SCALE_MAX);
-        lv_obj_align(g_clock_time, LV_ALIGN_TOP_MID, 0, 70);
+
+        lv_label_set_text(g_clock_time, digits);
+        if (g_clock_ampm != nullptr) lv_label_set_text(g_clock_ampm, ampm);
+        if (g_clock_date != nullptr) {
+            lv_label_set_text(g_clock_date, date);
+            lv_obj_align(g_clock_date, LV_ALIGN_TOP_MID, 0, CLOCK_DATE_Y);
+        }
+        layoutClockTime(digits, ampm);
     }
 }
 
