@@ -102,17 +102,32 @@ bool display_init() {
     lv_init();
     lv_tick_set_cb(tick_cb);
 
-    // The draw buffers come from PSRAM to keep them out of the internal SRAM
-    // that the network stack wants. They do NOT need to be DMA-capable, and
-    // asking for MALLOC_CAP_DMA here would guarantee failure: external RAM on
-    // the ESP32-S3 is never registered as DMA-capable, so no heap satisfies
-    // SPIRAM|DMA and every such request returns NULL. Nothing DMAs out of these
-    // buffers anyway - LovyanGFX owns the real scanout framebuffer (it
-    // allocates that itself with MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT), and a
-    // draw buffer is only the source of a memcpy into it.
+    // The draw buffers go in INTERNAL DMA-capable RAM, not PSRAM, and that is
+    // a display-quality decision rather than a memory one.
+    //
+    // The RGB panel scans its framebuffer out of PSRAM continuously. Put the
+    // draw buffer in PSRAM too and every flush both reads and writes PSRAM,
+    // competing with that scanout for the same bus and starving its DMA. On
+    // real hardware that shows up as occasional jitter, worse while the touch
+    // controller is also active. From internal RAM a flush only writes to
+    // PSRAM, halving the contention. Two 16 KB buffers is affordable against
+    // roughly 140 KB free.
+    //
+    // Falls back to PSRAM if internal memory is short, because a jittery
+    // display beats no display. The fallback must NOT ask for MALLOC_CAP_DMA:
+    // external RAM on the ESP32-S3 is never registered DMA-capable, so every
+    // such request returns NULL.
     const size_t bytes = DRAW_PIXELS * sizeof(uint16_t);
-    void* buf1 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
-    void* buf2 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    bool  internal = true;
+    void* buf1 = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    void* buf2 = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (buf1 == nullptr || buf2 == nullptr) {
+        heap_caps_free(buf1);
+        heap_caps_free(buf2);
+        internal = false;
+        buf1 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+        buf2 = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    }
     if (buf1 == nullptr || buf2 == nullptr) {
         heap_caps_free(buf1);
         heap_caps_free(buf2);
@@ -135,8 +150,10 @@ bool display_init() {
     lv_display_set_buffers(g_disp, buf1, buf2, bytes,
                            LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    Serial.printf("display: %dx%d up, pclk %u Hz\n", board::LCD_WIDTH,
-                  board::LCD_HEIGHT, static_cast<unsigned>(board::LCD_PCLK_HZ));
+    Serial.printf("display: %dx%d up, pclk %u Hz, draw buffers in %s\n",
+                  board::LCD_WIDTH, board::LCD_HEIGHT,
+                  static_cast<unsigned>(board::LCD_PCLK_HZ),
+                  internal ? "internal RAM" : "PSRAM (expect jitter)");
     return true;
 }
 

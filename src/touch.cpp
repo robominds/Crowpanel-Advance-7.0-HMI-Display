@@ -103,28 +103,32 @@ void touch_poll() {
     if (now - g_last_poll_ms < board::TOUCH_POLL_MS) return;
     g_last_poll_ms = now;
 
-    uint8_t status = 0;
-    if (!readRegs(REG_STATUS, &status, 1)) return;
+    // One transaction, not two. The GT911's status byte and the first touch
+    // point are contiguous (0x814E status, 0x8150..0x8153 X and Y), so a single
+    // six-byte read fetches both. Two separate reads occupy this bus twice as
+    // long, and this bus is shared with the panel's companion MCU while the RGB
+    // DMA is scanning - which is Elecrow's own issue #8, visible as jitter
+    // while a finger is down.
+    uint8_t buf[6];
+    if (!readRegs(REG_STATUS, buf, sizeof(buf))) return;
+
+    const uint8_t status = buf[0];
 
     // Bit 7 means the controller has a fresh result; the low nibble is the
     // number of points.
     if ((status & 0x80) == 0) return;
 
-    const uint8_t points = status & 0x0F;
-    if (points > 0) {
-        uint8_t buf[4];
-        if (readRegs(REG_POINT1_X, buf, sizeof(buf))) {
-            const int16_t x =
-                static_cast<int16_t>(buf[0] | (static_cast<uint16_t>(buf[1]) << 8));
-            const int16_t y =
-                static_cast<int16_t>(buf[2] | (static_cast<uint16_t>(buf[3]) << 8));
+    if ((status & 0x0F) > 0) {
+        const int16_t x =
+            static_cast<int16_t>(buf[2] | (static_cast<uint16_t>(buf[3]) << 8));
+        const int16_t y =
+            static_cast<int16_t>(buf[4] | (static_cast<uint16_t>(buf[5]) << 8));
 
-            // Clamp rather than trust. A glitched read that lands off-screen
-            // would otherwise send LVGL a pointer outside every object.
-            g_x = x < 0 ? 0 : (x >= board::LCD_WIDTH ? board::LCD_WIDTH - 1 : x);
-            g_y = y < 0 ? 0 : (y >= board::LCD_HEIGHT ? board::LCD_HEIGHT - 1 : y);
-            g_pressed = true;
-        }
+        // Clamp rather than trust. A glitched read that lands off-screen would
+        // otherwise send LVGL a pointer outside every object.
+        g_x = x < 0 ? 0 : (x >= board::LCD_WIDTH ? board::LCD_WIDTH - 1 : x);
+        g_y = y < 0 ? 0 : (y >= board::LCD_HEIGHT ? board::LCD_HEIGHT - 1 : y);
+        g_pressed = true;
     } else {
         g_pressed = false;
     }
