@@ -9,6 +9,7 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 
+#include "brightness.h"
 #include "parse.h"
 #include "secrets.h"
 
@@ -36,6 +37,7 @@ bool fetch() {
              "http://api.open-meteo.com/v1/forecast"
              "?latitude=%s&longitude=%s"
              "&current=temperature_2m,relative_humidity_2m,weather_code"
+             "&daily=sunrise,sunset&forecast_days=1"
              "&timezone=America%%2FLos_Angeles",
              WEATHER_LATITUDE, WEATHER_LONGITUDE);
 
@@ -66,6 +68,10 @@ bool fetch() {
     if (g_channel != nullptr) {
         g_channel->update(w.temperature_c, w.humidity_pct, millis());
     }
+    // Optional, and absent is fine: the backlight stays bright if it cannot
+    // know whether it is night.
+    brightness::setSunTimes(w.sunrise_min, w.sunset_min);
+
     Serial.printf("weather: %.1f C  %.0f%% RH\n", w.temperature_c, w.humidity_pct);
     return true;
 }

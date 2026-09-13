@@ -24,11 +24,24 @@ namespace parse {
 // the chart, so silence is better than a plausible-looking wrong number.
 bool decimal(const char* payload, size_t len, float& out);
 
-// One current-conditions reading from Open-Meteo.
+// One current-conditions reading from Open-Meteo, plus the day's sun times
+// when the response carried them.
 struct Weather {
-    float temperature_c;
-    float humidity_pct;
+    float temperature_c = 0.0f;
+    float humidity_pct  = 0.0f;
+
+    // Minutes since local midnight, or -1 when the response did not include
+    // them or they did not parse. Open-Meteo returns these already converted to
+    // the requested timezone, so they compare directly against a local clock.
+    int sunrise_min = -1;
+    int sunset_min  = -1;
 };
+
+// Minutes since midnight from an ISO 8601 local timestamp such as
+// "2026-09-12T06:41". Returns -1 for anything that is not one, including an
+// out-of-range hour or minute. Exposed separately because it is the fiddly
+// part and deserves its own tests.
+int isoClockMinutes(const char* iso);
 
 // Extracts `current.temperature_2m` and `current.relative_humidity_2m` from an
 // Open-Meteo response body.

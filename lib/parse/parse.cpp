@@ -64,6 +64,30 @@ bool decimal(const char* payload, size_t len, float& out) {
     return true;
 }
 
+int isoClockMinutes(const char* iso) {
+    if (iso == nullptr) return -1;
+
+    // Find the date/time separator rather than assuming a fixed offset: the
+    // date part is always ten characters today, but anchoring on 'T' costs
+    // nothing and does not care.
+    const char* t = std::strchr(iso, 'T');
+    if (t == nullptr) return -1;
+
+    const char* h = t + 1;
+    if (!std::isdigit(static_cast<unsigned char>(h[0])) ||
+        !std::isdigit(static_cast<unsigned char>(h[1])) || h[2] != ':' ||
+        !std::isdigit(static_cast<unsigned char>(h[3])) ||
+        !std::isdigit(static_cast<unsigned char>(h[4]))) {
+        return -1;
+    }
+
+    const int hh = (h[0] - '0') * 10 + (h[1] - '0');
+    const int mm = (h[3] - '0') * 10 + (h[4] - '0');
+    if (hh > 23 || mm > 59) return -1;
+
+    return hh * 60 + mm;
+}
+
 bool openMeteo(const char* json, size_t len, Weather& out) {
     if (json == nullptr || len == 0) return false;
 
@@ -84,6 +108,20 @@ bool openMeteo(const char* json, size_t len, Weather& out) {
 
     out.temperature_c = t.as<float>();
     out.humidity_pct  = h.as<float>();
+
+    // Sun times are optional. A response without them still yields a usable
+    // reading: the display's job is the temperature, and the backlight simply
+    // stays bright when it cannot know whether it is night.
+    out.sunrise_min = -1;
+    out.sunset_min  = -1;
+
+    JsonVariantConst daily = doc["daily"];
+    if (!daily.isNull()) {
+        JsonVariantConst rise = daily["sunrise"][0];
+        JsonVariantConst set  = daily["sunset"][0];
+        if (rise.is<const char*>()) out.sunrise_min = isoClockMinutes(rise.as<const char*>());
+        if (set.is<const char*>())  out.sunset_min  = isoClockMinutes(set.as<const char*>());
+    }
     return true;
 }
 

@@ -41,11 +41,33 @@ should change nothing.
 Where the press *starts* decides which fires, so a finger that drifts during
 the hold cannot change its mind.
 
+### Brightness
+
+The backlight runs at full during the day and at 25% between sunset and
+sunrise. The sun times come from the same Open-Meteo request that supplies the
+outdoor reading, and are compared against the board's own clock.
+
+That is deliberately not the API's `is_day` flag, which would also have worked.
+Using the times means the change lands on the exact minute rather than whenever
+the next fifteen-minute poll arrives, and it keeps working with the network
+down, because the real-time clock survives a power cut.
+
+Two details that matter more than they look. The backlight is written only when
+the level actually changes, because that I2C bus is shared with the touch
+controller and needless traffic on it makes the display jitter. And if the
+clock or the sun times are unknown, it stays at full — a panel that is
+mysteriously dim is worse than one that is too bright.
+
+The percentages are LED current, not perceived brightness. Eyes are roughly
+logarithmic, so 50% was barely distinguishable from full and 25% is the value
+that reads as actually dimmer. `NIGHT_PERCENT` in `src/brightness.h` is the one
+number to change.
+
 ## Build and flash
 
 ```sh
 pio run -e advance_70 -t upload   # build and flash the board
-pio test -e native                # run 64 host tests, no hardware needed
+pio test -e native                # run 70 host tests, no hardware needed
 ```
 
 Before flashing, copy `include/secrets.h.template` to `include/secrets.h` and
@@ -85,6 +107,7 @@ section 2.6.
 | `src/source_mqtt.*` | The office reading, subscribed from the MQTT broker. |
 | `src/source_weather.*` | The Maple Valley reading, polled from Open-Meteo. |
 | `src/ui.*` | Both views — the stacked chart rows and the clock — and the switch between them. |
+| `src/brightness.*` | Day/night backlight policy, driven by sunrise and sunset against the local clock. |
 | `src/rtc.*` | Wall-clock time: the PCF8563 at boot, the network for accuracy, written back so a cold boot starts correct. |
 | `tools/diag/` | Throwaway diagnostic for the real-time clock and the microSD card, neither of which the application touches. Its own `diag` environment; does not start the panel. |
 | `src/main.cpp` | Startup order and the main loop. |

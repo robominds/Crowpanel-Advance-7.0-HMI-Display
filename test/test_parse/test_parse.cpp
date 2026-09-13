@@ -214,6 +214,67 @@ static void test_openmeteo_rejects_non_numeric_temperature(void) {
                          "\"relative_humidity_2m\":62}}", w));
 }
 
+
+// ---------------------------------------------------------------------------
+// Sun times. Open-Meteo returns these already converted to the requested
+// timezone, so they compare directly against a local clock.
+// ---------------------------------------------------------------------------
+
+static const char kWithSun[] =
+    "{\"current\":{\"temperature_2m\":15.1,\"relative_humidity_2m\":74},"
+    "\"daily\":{\"time\":[\"2026-09-12\"],"
+    "\"sunrise\":[\"2026-09-12T06:41\"],"
+    "\"sunset\":[\"2026-09-12T19:25\"]}}";
+
+static void test_iso_clock_minutes_typical(void) {
+    TEST_ASSERT_EQUAL_INT(401, parse::isoClockMinutes("2026-09-12T06:41"));
+    TEST_ASSERT_EQUAL_INT(1165, parse::isoClockMinutes("2026-09-12T19:25"));
+}
+
+static void test_iso_clock_minutes_boundaries(void) {
+    TEST_ASSERT_EQUAL_INT(0, parse::isoClockMinutes("2026-01-01T00:00"));
+    TEST_ASSERT_EQUAL_INT(1439, parse::isoClockMinutes("2026-01-01T23:59"));
+}
+
+static void test_iso_clock_minutes_rejects_junk(void) {
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes(nullptr));
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes(""));
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes("2026-09-12"));
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes("2026-09-12T"));
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes("2026-09-12Tab:cd"));
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes("2026-09-12T24:00"));
+    TEST_ASSERT_EQUAL_INT(-1, parse::isoClockMinutes("2026-09-12T06:60"));
+}
+
+static void test_openmeteo_extracts_sun_times(void) {
+    parse::Weather w{};
+    TEST_ASSERT_TRUE(om(kWithSun, w));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 15.1f, w.temperature_c);
+    TEST_ASSERT_EQUAL_INT(401, w.sunrise_min);
+    TEST_ASSERT_EQUAL_INT(1165, w.sunset_min);
+}
+
+static void test_openmeteo_without_daily_still_succeeds(void) {
+    // The sun times are optional. A response carrying only the current block
+    // must still yield a usable reading - the display's job is the temperature,
+    // and the backlight simply stays bright if it cannot know.
+    parse::Weather w{};
+    TEST_ASSERT_TRUE(om(kRealResponse, w));
+    TEST_ASSERT_EQUAL_INT(-1, w.sunrise_min);
+    TEST_ASSERT_EQUAL_INT(-1, w.sunset_min);
+}
+
+static void test_openmeteo_malformed_sun_times_do_not_fail_the_reading(void) {
+    parse::Weather w{};
+    TEST_ASSERT_TRUE(om("{\"current\":{\"temperature_2m\":15.1,"
+                        "\"relative_humidity_2m\":74},"
+                        "\"daily\":{\"sunrise\":[\"nonsense\"],"
+                        "\"sunset\":[]}}", w));
+    TEST_ASSERT_FLOAT_WITHIN(kEps, 15.1f, w.temperature_c);
+    TEST_ASSERT_EQUAL_INT(-1, w.sunrise_min);
+    TEST_ASSERT_EQUAL_INT(-1, w.sunset_min);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
 
@@ -247,6 +308,13 @@ int main(int, char**) {
     RUN_TEST(test_openmeteo_rejects_empty_and_null);
     RUN_TEST(test_openmeteo_rejects_api_error_body);
     RUN_TEST(test_openmeteo_rejects_non_numeric_temperature);
+
+    RUN_TEST(test_iso_clock_minutes_typical);
+    RUN_TEST(test_iso_clock_minutes_boundaries);
+    RUN_TEST(test_iso_clock_minutes_rejects_junk);
+    RUN_TEST(test_openmeteo_extracts_sun_times);
+    RUN_TEST(test_openmeteo_without_daily_still_succeeds);
+    RUN_TEST(test_openmeteo_malformed_sun_times_do_not_fail_the_reading);
 
     return UNITY_END();
 }

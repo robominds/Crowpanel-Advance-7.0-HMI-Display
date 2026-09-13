@@ -18,6 +18,7 @@
 
 #include "Channel.h"
 #include "board_pins.h"
+#include "brightness.h"
 #include "display_driver.h"
 #include "net.h"
 #include "rtc.h"
@@ -215,7 +216,10 @@ void setup() {
     // Draw the first frame before the backlight comes on, so the panel lights
     // up showing the UI rather than whatever was in the buffers.
     lv_timer_handler();
-    panel_mcu::backlightOn();
+
+    // Brightness owns the backlight from here. It comes up at full and dims
+    // once a weather response has supplied the day's sun times.
+    brightness::poll(rtc::hasTime());
 
     Serial.println("ready");
 }
@@ -225,6 +229,7 @@ void loop() {
 
     net::poll();
     rtc::poll(net::connected());
+    brightness::poll(rtc::hasTime());
     source_mqtt::poll();
     source_weather::poll();
 
