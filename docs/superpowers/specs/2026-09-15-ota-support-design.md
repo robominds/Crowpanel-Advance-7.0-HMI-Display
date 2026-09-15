@@ -86,8 +86,9 @@ except, from now on, the library's boot counter.
   "Receiving update"; `lv_timer_handler()`.
 - `onProgress(Push, p)`: bar and percentage; `lv_timer_handler()`.
 - `onRebooting(Push)`: bar 100, status "Rebooting"; `lv_timer_handler()`.
-- `onError(Push, msg)`: status "Update failed: <msg>" in red; hide the overlay
-  5 s later (checked from `loop()`).
+- `onError(Push, msg)`: show the overlay if it is hidden (a wrong password
+  fails before `onTransferStarted`), status "Update failed: <msg>" in red; hide
+  the overlay 5 s later (checked from `loop()`).
 - `onSlot`, `onPushListening`: serial log only (this UI has no slot row).
 - Touch is not polled during a transfer (the library blocks `poll()`), so
   long-press actions cannot fire mid-update.
