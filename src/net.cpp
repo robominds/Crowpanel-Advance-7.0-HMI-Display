@@ -8,8 +8,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-#include "secrets.h"
-
+// WIFI_SSID and WIFI_PASSWORD come from secrets.ini as build flags.
 namespace net {
 namespace {
 

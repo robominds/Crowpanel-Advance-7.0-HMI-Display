@@ -12,12 +12,11 @@
 #include <cstring>
 
 #include "parse.h"
-#include "secrets.h"
 
 namespace source_mqtt {
 namespace {
 
-// From include/secrets.h, because which device publishes the indoor reading is
+// From secrets.ini, because which device publishes the indoor reading is
 // a property of one person's network rather than of this firmware.
 constexpr char TOPIC_TEMP[] = MQTT_TOPIC_TEMP;
 constexpr char TOPIC_HUM[]  = MQTT_TOPIC_HUM;

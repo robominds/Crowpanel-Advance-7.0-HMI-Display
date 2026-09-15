@@ -11,7 +11,6 @@
 
 #include "brightness.h"
 #include "parse.h"
-#include "secrets.h"
 
 namespace source_weather {
 namespace {

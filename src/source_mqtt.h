@@ -1,7 +1,7 @@
 // The office temperature, from the MQTT broker.
 //
 // Subscribes to the two topics named by MQTT_TOPIC_TEMP and MQTT_TOPIC_HUM in
-// include/secrets.h, temperature in Celsius and relative humidity. The broker
+// secrets.ini, temperature in Celsius and relative humidity. The broker
 // publishes bare decimal ASCII, not JSON, about every ten seconds. It accepts
 // anonymous connections; there are no credentials to supply.
 //
