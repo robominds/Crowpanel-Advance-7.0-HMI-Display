@@ -3,7 +3,7 @@
 Author: Mark Castelluccio <markacastelluccio@gmail.com>
 Drafted with Claude Code (Anthropic Claude Opus 5). **Draft for review:** written
 while the user was away. The four decisions in "Decided with the user" were made
-in conversation on 2026-09-15; everything marked *(proposed)* was not.
+in conversation on 2026-09-15; the three open questions were answered on review.
 
 ## Goal
 
@@ -91,8 +91,8 @@ except, from now on, the library's boot counter.
 - `onSlot`, `onPushListening`: serial log only (this UI has no slot row).
 - Touch is not polled during a transfer (the library blocks `poll()`), so
   long-press actions cannot fire mid-update.
-- *(proposed)* The backlight is left as `brightness` has set it; no forced
-  full brightness during an update.
+- The backlight is left as `brightness` has set it; no forced full brightness
+  during an update.
 
 ## Loop and connectivity during an upload
 
@@ -114,7 +114,7 @@ fallback, and confirm before an update writes. A build that crashes before then
 bootloader. Power-cycling within about 40 s of an update also reverts a good
 image — documented in the README.
 
-## Version *(proposed)*
+## Version
 
 `custom_fw_version = 2.0.0` (first OTA-capable release; the app had no version).
 Printed in the boot banner (`CrowPanel Advance 7.0 temperature display 2.0.0`);
@@ -149,13 +149,13 @@ As in the library: `firmware.bin` carries the WiFi password, MQTT host and OTA
 password as plain strings; this app never serves it, but anyone who obtains a
 build can read them. espota traffic is authenticated but not encrypted.
 
-## Open questions for the user
+## Decided with the user on review
 
-1. Hostname: `temperature-display`, or reuse the panel's current `alpha-ota`?
-   Two firmwares on one panel with different names means updating the name in
-   `secrets.ini` when switching.
-2. Version numbering: start at 2.0.0?
-3. Keep the backlight as is during an update, or force full brightness?
+1. Hostname `temperature-display` (`device_host` in `secrets.ini`). Switching
+   the panel between this app and the OTA demo means a USB flash anyway, since
+   each firmware answers only to its own name.
+2. Version starts at 2.0.0 (`MAJOR.MINOR.PATCH`, as the library requires).
+3. The backlight stays as `brightness` has set it during an update.
 
 ## Out of scope
 
