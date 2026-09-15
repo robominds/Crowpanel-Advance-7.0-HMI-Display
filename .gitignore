@@ -2,3 +2,4 @@
 .vscode/
 .DS_Store
 secrets.ini
+include/secrets.h

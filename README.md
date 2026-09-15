@@ -81,7 +81,10 @@ pio test -e native                     # run 70 host tests, no hardware needed
 `secrets.ini` holds the Wi-Fi credentials, the MQTT broker and topics, the
 weather coordinates, and the over-the-air hostname and password. It is
 gitignored. Put every value except `mqtt_port` in double quotes, and keep
-`"`, `'`, `\`, `$`, `` ` `` and `;` out of the values.
+`"`, `'`, `\`, `$`, `` ` `` and `;` out of the values, as well as a `#` after a
+space. Every environment reads `secrets.ini`, the host tests included: without
+it PlatformIO stops with `No section: 'secrets'`. For the host tests alone, the
+unedited example is enough.
 
 The build fetches the private library `robominds/esp32-ota-kit` (tag `v1.0.0`)
 over SSH, so it needs read access to that repository.
@@ -107,7 +110,10 @@ espota has the panel connect back to the computer. If the upload ends with
 `No response from device`, allow PlatformIO's Python
 (`~/.platformio/penv/bin/python`) to accept incoming connections in the macOS
 firewall. `Authentication Failed` means `ota_password` differs from the one the
-running firmware was built with.
+running firmware was built with. `No response from the ESP` or `Host ... Not
+Found` means the panel did not answer to its name: check that it is on Wi-Fi and
+that `device_host` matches the firmware it is running. Changing `device_host`
+takes a USB flash, because the running firmware answers only to its old name.
 
 `firmware.bin` contains the Wi-Fi and OTA passwords as plain strings, and espota
 traffic is authenticated but not encrypted. Use it on a network you trust.
@@ -232,11 +238,12 @@ supply headroom. Section 9 tracks what remains open.
 
 ## Verified so far
 
-- `pio test -e native` passes 64 host tests for parsing, sample history, and
+- `pio test -e native` passes 70 host tests for parsing, sample history, and
   channel staleness — all pure logic, none of it touching the panel, touch, or
   network.
-- `pio run -e advance_70` builds and links successfully: flash 1,526,863 of
-  3,145,728 bytes (48.5%), internal RAM 185,544 of 327,680 bytes (56.6%).
+- `pio run -e advance_70` builds and links successfully: flash 1,735,931 of
+  6,553,600 bytes (26.5%, one over-the-air slot), internal RAM 194,848 of
+  327,680 bytes (59.5%).
 - The first hardware bring-up, 2026-09-12: module confirmed N16R8, board
   confirmed V1.3 or later, touch at 0x5D, panel stable at 16 MHz, serial at
   115200 with CDC off, and roughly a dozen uploads at 921600 with the hash

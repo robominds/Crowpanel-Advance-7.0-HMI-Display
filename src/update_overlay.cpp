@@ -96,6 +96,13 @@ void UpdateOverlay::onRebooting(ota::Source) {
 }
 
 void UpdateOverlay::onError(ota::Source, const char* message) {
+    // One failure can report two errors (a failed connect-back also fails
+    // Update.end()); the first names the cause, so a second only restarts the
+    // hold time. onTransferStarted clears this for the next attempt.
+    if (g_error_showing) {
+        g_error_since_ms = millis();
+        return;
+    }
     // A wrong password fails before onTransferStarted, so show the panel here.
     show();
     char text[96];
