@@ -72,13 +72,45 @@ cannot tell "very dim" from "off".
 ## Build and flash
 
 ```sh
-pio run -e advance_70 -t upload   # build and flash the board
-pio test -e native                # run 70 host tests, no hardware needed
+cp secrets.ini.example secrets.ini     # then fill it in
+pio run -e advance_70 -t upload        # build and flash over USB
+pio run -e advance_70_ota -t upload    # afterwards: update over WiFi
+pio test -e native                     # run 70 host tests, no hardware needed
 ```
 
-Before flashing, copy `include/secrets.h.template` to `include/secrets.h` and
-fill in your Wi-Fi credentials. `include/secrets.h` is gitignored; the template
-is not.
+`secrets.ini` holds the Wi-Fi credentials, the MQTT broker and topics, the
+weather coordinates, and the over-the-air hostname and password. It is
+gitignored. Put every value except `mqtt_port` in double quotes, and keep
+`"`, `'`, `\`, `$`, `` ` `` and `;` out of the values.
+
+The build fetches the private library `robominds/esp32-ota-kit` (tag `v1.0.0`)
+over SSH, so it needs read access to that repository.
+
+### Updating over WiFi
+
+The first flash after pulling this change must go over USB: it replaces the
+single-app partition table with `default_16MB.csv`, which has two 6.4 MB app
+slots. After that, `pio run -e advance_70_ota -t upload` sends the build to
+`<device_host>.local`, authenticated with `ota_password`. A full-screen
+"Updating firmware" panel shows progress on either view, and the panel reboots
+into the new version. The charts start empty after every update, because their
+history lives in RAM.
+
+A new image is confirmed 30 s after Wi-Fi comes up, or 90 s after boot,
+whichever comes first. One that crashes or hangs before then is rolled back by
+the bootloader to the previous version. The same window has a cost:
+power-cycling the panel within about 40 s of an update also rolls back a good
+image; run the update again. MQTT may disconnect during an upload and
+reconnects on its own if the update fails.
+
+espota has the panel connect back to the computer. If the upload ends with
+`No response from device`, allow PlatformIO's Python
+(`~/.platformio/penv/bin/python`) to accept incoming connections in the macOS
+firewall. `Authentication Failed` means `ota_password` differs from the one the
+running firmware was built with.
+
+`firmware.bin` contains the Wi-Fi and OTA passwords as plain strings, and espota
+traffic is authenticated but not encrypted. Use it on a network you trust.
 
 **On macOS, install the CH340K driver first, or the upload command above will
 just fail to find a port.** This board's CH340K enumerates as `1a86:7522`, one
@@ -104,7 +136,7 @@ section 2.6.
 | `test/test_channel/` | 12 host tests, including the `millis()` rollover. |
 | `lib/parse/` | Payload parsing for MQTT bare-decimal values and Open-Meteo JSON. |
 | `test/test_parse/` | 26 host tests for both payload formats, malformed input included. |
-| `include/` | `secrets.h.template` for Wi-Fi credentials; `secrets.h` itself is gitignored. |
+| `secrets.ini.example` | Template for the gitignored `secrets.ini`: Wi-Fi, MQTT, weather location, over-the-air hostname and password. |
 | `src/board_pins.h` | Every GPIO for this board, named, with the source for each value. |
 | `src/display_driver.*` | The RGB panel over LovyanGFX, plus the LVGL 9 binding. Does not own the backlight. |
 | `src/panel_mcu.*` | The STC8H1K28 companion microcontroller: backlight, touch reset, buzzer. |
@@ -115,6 +147,7 @@ section 2.6.
 | `src/ui.*` | Both views — the stacked chart rows and the clock — and the switch between them. |
 | `src/brightness.*` | Day/night backlight policy, driven by sunrise and sunset against the local clock. |
 | `src/rtc.*` | Wall-clock time: the PCF8563 at boot, the network for accuracy, written back so a cold boot starts correct. |
+| `src/update_overlay.*` | Full-screen progress and error panel for over-the-air updates, from `esp32-ota-kit` events. |
 | `tools/diag/` | Throwaway diagnostic for the real-time clock and the microSD card, neither of which the application touches. Its own `diag` environment; does not start the panel. |
 | `src/main.cpp` | Startup order and the main loop. |
 | `docs/HARDWARE.md` | The hardware reference this README summarizes. Read it before touching a GPIO. |
