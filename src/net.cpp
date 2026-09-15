@@ -8,7 +8,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-// WIFI_SSID and WIFI_PASSWORD come from secrets.ini as build flags.
+// WIFI_SSID, WIFI_PASSWORD and OTA_HOSTNAME come from secrets.ini as build flags.
 namespace net {
 namespace {
 
@@ -60,6 +60,9 @@ void attempt() {
 
 void begin() {
     WiFi.onEvent(onWiFiEvent);
+    // Before mode(): the station interface takes its DHCP hostname when it
+    // starts. The same name answers mDNS for over-the-air updates.
+    WiFi.setHostname(OTA_HOSTNAME);
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     // The panel is mains-powered and needs throughput more than it needs the

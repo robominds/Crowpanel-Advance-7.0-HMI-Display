@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <ota.h>
 
 #include <new>
 
@@ -27,6 +28,7 @@
 #include "source_weather.h"
 #include "touch.h"
 #include "ui.h"
+#include "update_overlay.h"
 
 namespace {
 
@@ -71,6 +73,9 @@ constexpr uint16_t OFFICE_CHART_POINTS = static_cast<uint16_t>(ui::CHART_POINTS)
 
 const uint16_t g_chart_points[CHANNEL_COUNT] = {WEATHER_CHART_POINTS,
                                                 OFFICE_CHART_POINTS};
+
+// Shows push updates on top of both views.
+UpdateOverlay g_update_overlay;
 
 // Long press, deliberately not a button: the panel is meant to be read, not
 // operated, and a stray brush against the glass should change nothing.
@@ -158,7 +163,7 @@ void setup() {
     // Serial reaches the host through a CH340K on GPIO43/44, not native USB.
     // Nothing to wait for, so no while(!Serial) here - that would hang forever.
     delay(200);
-    Serial.println("\nCrowPanel Advance 7.0 temperature display");
+    Serial.printf("\nCrowPanel Advance 7.0 temperature display %s\n", FW_VERSION);
 
     // Now that there is somewhere to complain to, build the channels. The
     // nothrow new covers the Channel objects themselves; if the far larger
@@ -208,6 +213,16 @@ void setup() {
 
     ui::init(g_channels, g_chart_points, CHANNEL_COUNT);
     ui::refresh(millis());
+    g_update_overlay.init();
+
+    // Push updates and rollback. Before the backlight comes on, because begin()
+    // writes the boot counter to flash, and before Wi-Fi, which starts push.
+    // Pull updates stay off: no manifest_url.
+    ota::Config ota_config;
+    ota_config.hostname        = OTA_HOSTNAME;
+    ota_config.push_password   = OTA_PASSWORD;
+    ota_config.running_version = FW_VERSION;
+    ota::begin(ota_config, g_update_overlay);
 
     net::begin();
     source_mqtt::begin(*g_channels[1]);
@@ -228,6 +243,11 @@ void loop() {
     lv_timer_handler();
 
     net::poll();
+    // A push blocks here until it finishes; MQTT may drop meanwhile and
+    // reconnects on its own if the update fails.
+    ota::setNetworkUp(net::connected());
+    ota::poll();
+    g_update_overlay.poll(millis());
     rtc::poll(net::connected());
     brightness::poll(rtc::hasTime());
     source_mqtt::poll();
