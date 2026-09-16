@@ -1,8 +1,8 @@
 // Temperature display for the Elecrow CrowPanel Advance 7.0-HMI.
 //
 // Shows the outdoor temperature for Maple Valley, from Open-Meteo, above the
-// indoor temperature for Mark's office, from an MQTT broker, each with twelve
-// hours of history.
+// indoor temperature for the room this panel watches, from an MQTT broker, each
+// with twelve hours of history. secrets.ini names that room and its topics.
 //
 // Startup order matters on this board. The backlight is an I2C command to a
 // companion microcontroller, and it goes on LAST - after the panel is scanning
@@ -32,26 +32,27 @@
 
 namespace {
 
-// Expected publish intervals, used only to size the ring buffers.
-constexpr uint32_t OFFICE_INTERVAL_MS  = 10UL * 1000UL;
+// Expected publish intervals, used only to size the ring buffers. The indoor
+// sensor is a DHT publishing every ten seconds, whichever room it sits in.
+constexpr uint32_t INDOOR_INTERVAL_MS  = 10UL * 1000UL;
 constexpr uint32_t WEATHER_INTERVAL_MS = 15UL * 60UL * 1000UL;
 
-// Per-channel staleness. The office publishes every ten seconds, so a minute of
-// silence means something broke. Maple Valley updates every fifteen minutes, so
-// a minute of silence is normal.
-constexpr uint32_t OFFICE_STALE_MS  = 60UL * 1000UL;
+// Per-channel staleness. The indoor sensor publishes every ten seconds, so a
+// minute of silence means something broke. Maple Valley updates every fifteen
+// minutes, so a minute of silence is normal.
+constexpr uint32_t INDOOR_STALE_MS  = 60UL * 1000UL;
 constexpr uint32_t WEATHER_STALE_MS = 45UL * 60UL * 1000UL;
 
 // Capacity is the window divided by the interval, plus slack so the chart's
 // window is always fully covered rather than starved at the left edge.
-constexpr size_t OFFICE_CAPACITY =
-    (ui::CHART_WINDOW_MS / OFFICE_INTERVAL_MS) + 64;
+constexpr size_t INDOOR_CAPACITY =
+    (ui::CHART_WINDOW_MS / INDOOR_INTERVAL_MS) + 64;
 constexpr size_t WEATHER_CAPACITY =
     (ui::CHART_WINDOW_MS / WEATHER_INTERVAL_MS) + 8;
 
-// Two channels: [0] outdoor, [1] office. Deliberately pointers filled in by
+// Two channels: [0] outdoor, [1] indoor. Deliberately pointers filled in by
 // setup() rather than file-scope objects. Each Channel constructor allocates
-// its whole history up front - about 52 KB for the office - and a file-scope
+// its whole history up front - about 52 KB for the indoor one - and a file-scope
 // object would do that during static initialisation, before Serial.begin().
 // On a module that does not carry the memory the schematic claims, that failure
 // aborts and reboots the board with nothing printed at all. Constructed inside
@@ -66,13 +67,13 @@ channel::Channel* g_channels[CHANNEL_COUNT] = {nullptr, nullptr};
 // with empty columns either side and no line is ever drawn - which is exactly
 // what the first hardware bring-up showed. At 48 columns they are contiguous.
 //
-// Same order as g_channels: outdoor first, office second.
+// Same order as g_channels: outdoor first, indoor second.
 constexpr uint16_t WEATHER_CHART_POINTS =
     static_cast<uint16_t>(ui::CHART_WINDOW_MS / WEATHER_INTERVAL_MS);
-constexpr uint16_t OFFICE_CHART_POINTS = static_cast<uint16_t>(ui::CHART_POINTS);
+constexpr uint16_t INDOOR_CHART_POINTS = static_cast<uint16_t>(ui::CHART_POINTS);
 
 const uint16_t g_chart_points[CHANNEL_COUNT] = {WEATHER_CHART_POINTS,
-                                                OFFICE_CHART_POINTS};
+                                                INDOOR_CHART_POINTS};
 
 // Shows push updates on top of both views.
 UpdateOverlay g_update_overlay;
@@ -172,14 +173,16 @@ void setup() {
     // being a silent reboot loop.
     g_channels[0] = new (std::nothrow)
         channel::Channel("Maple Valley", WEATHER_STALE_MS, WEATHER_CAPACITY);
+    // INDOOR_LABEL and the MQTT topics come from secrets.ini, so the same
+    // firmware serves the office panel and the kitchen panel.
     g_channels[1] = new (std::nothrow)
-        channel::Channel("Mark's Office", OFFICE_STALE_MS, OFFICE_CAPACITY);
+        channel::Channel(INDOOR_LABEL, INDOOR_STALE_MS, INDOOR_CAPACITY);
     if (g_channels[0] == nullptr || g_channels[1] == nullptr) {
         Serial.println("FATAL: out of memory allocating the channel histories");
         Serial.printf("FATAL: needed room for %u + %u samples (~%u KB)\n",
                       static_cast<unsigned>(WEATHER_CAPACITY),
-                      static_cast<unsigned>(OFFICE_CAPACITY),
-                      static_cast<unsigned>((WEATHER_CAPACITY + OFFICE_CAPACITY) *
+                      static_cast<unsigned>(INDOOR_CAPACITY),
+                      static_cast<unsigned>((WEATHER_CAPACITY + INDOOR_CAPACITY) *
                                             sizeof(history::Sample) / 1024));
         Serial.println("FATAL: check that the module really has 8 MB of PSRAM");
         while (true) delay(1000);

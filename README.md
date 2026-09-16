@@ -78,13 +78,13 @@ pio run -e advance_70_ota -t upload    # afterwards: update over WiFi
 pio test -e native                     # run 70 host tests, no hardware needed
 ```
 
-`secrets.ini` holds the Wi-Fi credentials, the MQTT broker and topics, the
-weather coordinates, and the over-the-air hostname and password. It is
-gitignored. Put every value except `mqtt_port` in double quotes, and keep
-`"`, `'`, `\`, `$`, `` ` `` and `;` out of the values, as well as a `#` after a
-space. Every environment reads `secrets.ini`, the host tests included: without
-it PlatformIO stops with `No section: 'secrets'`. For the host tests alone, the
-unedited example is enough.
+`secrets.ini` holds the Wi-Fi credentials, the MQTT broker, its topics and this
+panel's row label, the weather coordinates, and the over-the-air hostname and
+password. It is gitignored. Put every value except `mqtt_port` in double
+quotes, and keep `"`, `'`, `\`, `$`, `` ` `` and `;` out of the values, as well
+as a `#` after a space. Every environment reads `secrets.ini`, the host tests
+included: without it PlatformIO stops with `No section: 'secrets'`. For the
+host tests alone, the unedited example is enough.
 
 The build fetches the private library `robominds/esp32-ota-kit` (tag `v1.0.0`)
 over SSH, so it needs read access to that repository.
@@ -105,6 +105,10 @@ the bootloader to the previous version. The same window has a cost:
 power-cycling the panel within about 40 s of an update also rolls back a good
 image; run the update again. MQTT may disconnect during an upload and
 reconnects on its own if the update fails.
+
+Two panels can run this firmware from one checkout: `indoor_label`, the two
+MQTT topics and `device_host` in `secrets.ini` are what make a build the
+office panel or the kitchen panel.
 
 espota has the panel connect back to the computer. If the upload ends with
 `No response from device`, allow PlatformIO's Python
@@ -148,7 +152,7 @@ section 2.6.
 | `src/panel_mcu.*` | The STC8H1K28 companion microcontroller: backlight, touch reset, buzzer. |
 | `src/touch.*` | GT911 over raw I2C, polled and rate-limited. |
 | `src/net.*` | Wi-Fi with non-blocking reconnection. |
-| `src/source_mqtt.*` | The office reading, subscribed from the MQTT broker. |
+| `src/source_mqtt.*` | The indoor reading, subscribed from the MQTT broker. |
 | `src/source_weather.*` | The Maple Valley reading, polled from Open-Meteo. |
 | `src/ui.*` | Both views — the stacked chart rows and the clock — and the switch between them. |
 | `src/brightness.*` | Day/night backlight policy, driven by sunrise and sunset against the local clock. |

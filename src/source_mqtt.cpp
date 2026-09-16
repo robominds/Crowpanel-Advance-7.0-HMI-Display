@@ -79,8 +79,8 @@ void connect() {
 
 }  // namespace
 
-void begin(channel::Channel& office) {
-    g_channel = &office;
+void begin(channel::Channel& indoor) {
+    g_channel = &indoor;
     g_mqtt.setServer(MQTT_HOST, MQTT_PORT);
     g_mqtt.setCallback(onMessage);
     // Payloads are single numbers, so the default 256-byte buffer is ample.

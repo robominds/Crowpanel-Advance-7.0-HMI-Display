@@ -1,4 +1,4 @@
-// The office temperature, from the MQTT broker.
+// The indoor temperature, from the MQTT broker.
 //
 // Subscribes to the two topics named by MQTT_TOPIC_TEMP and MQTT_TOPIC_HUM in
 // secrets.ini, temperature in Celsius and relative humidity. The broker
@@ -25,7 +25,7 @@ namespace source_mqtt {
 // Binds the channel that incoming readings are written into. The channel must
 // outlive this module; in practice it is allocated once in setup() and never
 // freed.
-void begin(channel::Channel& office);
+void begin(channel::Channel& indoor);
 
 // Call every loop. Handles connection, reconnection with backoff, and message
 // dispatch. Cheap when connected and idle.
