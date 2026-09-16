@@ -6,9 +6,10 @@ readings, each with humidity, in either of two views:
 
 - **Maple Valley** — outdoor conditions, fetched from the [Open-Meteo](https://open-meteo.com/)
   public API over plain HTTP. No API key.
-- **Mark's Office** — an indoor reading published by an MQTT broker at
-  `192.0.2.10:1883`. The broker accepts anonymous connections; there is
-  nothing to authenticate.
+- **An indoor room** — a reading published by an MQTT broker on your own
+  network. The room's name and its two topics come from `secrets.ini`, so the
+  same firmware serves a panel in any room. The broker accepts anonymous
+  connections; there is nothing to authenticate.
 
 ## The two views
 
@@ -21,6 +22,13 @@ power-up, before Wi-Fi has associated.
 
 **Charts**, the same two readings with twelve hours of history each, over a
 status bar.
+
+A reading whose channel has gone quiet is dimmed to 40% opacity in both views,
+and the chart row also prints `stale` at its right-hand end. A dimmed number is
+a status, not a styling quirk: the indoor channel goes stale after a minute of
+broker silence, the outdoor one after 45 minutes. Expect a few dim seconds after
+every boot or over-the-air update, because the firmware accepts a temperature
+only once it has seen one humidity message.
 
 ![The chart view, both channels live with their twelve-hour history](docs/display.png)
 
