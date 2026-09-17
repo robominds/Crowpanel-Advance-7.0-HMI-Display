@@ -261,6 +261,7 @@ void loop() {
     g_update_overlay.poll(millis());
     rtc::poll(net::connected());
     brightness::poll(rtc::hasTime());
+    ui::setNightMode(brightness::isNight());
     source_mqtt::poll();
     source_weather::poll();
 

@@ -82,6 +82,12 @@ void setStatus(bool wifi_up, bool mqtt_up);
 // minute actually changes.
 void setClock(bool have_time, time_t now);
 
+// Clock-view palette: white through the day, red at night. Driven by the same
+// sunrise and sunset times as the backlight policy, so colour and brightness
+// change together on the minute. Safe to call every loop - it repaints only
+// when the state actually flips.
+void setNightMode(bool on);
+
 // Celsius or Fahrenheit. Conversion happens at display time; history always
 // stores Celsius.
 void setFahrenheit(bool on);

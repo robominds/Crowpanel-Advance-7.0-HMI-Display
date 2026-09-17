@@ -46,4 +46,10 @@ void poll(bool have_clock);
 // The level last written, for logging and tests.
 uint8_t current();
 
+// True once the sun times and the clock agree that it is night. False during
+// the day, and false while either is unknown - the same caution as the
+// backlight policy, so an unknown hour never turns the screen to its night
+// appearance.
+bool isNight();
+
 }  // namespace brightness

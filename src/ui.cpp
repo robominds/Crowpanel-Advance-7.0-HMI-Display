@@ -317,10 +317,35 @@ void buildStatusBar() {
 }
 
 // The clock view's text colour, in one place so the whole view stays
-// consistent. Red on black: legible across a room without lighting it up.
-// Staleness dims by opacity rather than recolouring, so a stale reading is a
-// dim version of this.
-lv_color_t clockText() { return lv_palette_main(LV_PALETTE_RED); }
+// consistent. White through the day, red after sunset: red carries across a
+// dark room without lighting it up, and white holds its contrast against a lit
+// one. Staleness dims by opacity rather than recolouring, so a stale reading is
+// a dim version of whichever colour is current.
+bool g_night = false;
+
+lv_color_t clockText() {
+    return g_night ? lv_palette_main(LV_PALETTE_RED) : lv_color_white();
+}
+
+// Repaints every clock-view label in the current colour. Only called when day
+// and night actually swap, so the cost is two writes a day.
+void repaintClockText() {
+    const lv_color_t colour = clockText();
+    if (g_clock_time != nullptr) lv_obj_set_style_text_color(g_clock_time, colour, 0);
+    if (g_clock_ampm != nullptr) lv_obj_set_style_text_color(g_clock_ampm, colour, 0);
+    if (g_clock_date != nullptr) lv_obj_set_style_text_color(g_clock_date, colour, 0);
+    for (size_t i = 0; i < MAX_ROWS; ++i) {
+        if (g_clock_temp[i] != nullptr) {
+            lv_obj_set_style_text_color(g_clock_temp[i], colour, 0);
+        }
+        if (g_clock_frac[i] != nullptr) {
+            lv_obj_set_style_text_color(g_clock_frac[i], colour, 0);
+        }
+        if (g_clock_hum[i] != nullptr) {
+            lv_obj_set_style_text_color(g_clock_hum[i], colour, 0);
+        }
+    }
+}
 
 void buildClockView(size_t count) {
     g_clock_view = lv_obj_create(lv_screen_active());
@@ -394,6 +419,12 @@ void buildClockView(size_t count) {
 }
 
 }  // namespace
+
+void setNightMode(bool on) {
+    if (on == g_night) return;
+    g_night = on;
+    repaintClockText();
+}
 
 void setView(View v) {
     if (v == g_view) return;

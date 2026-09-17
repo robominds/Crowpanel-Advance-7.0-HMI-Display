@@ -75,4 +75,8 @@ void poll(bool have_clock) {
 
 uint8_t current() { return g_level; }
 
+// Derived from the level actually written rather than re-deriving the hour:
+// one source of truth, and it inherits the "unknown means day" caution above.
+bool isNight() { return g_written && g_level == NIGHT_PERCENT; }
+
 }  // namespace brightness
