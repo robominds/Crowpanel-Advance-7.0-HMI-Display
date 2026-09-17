@@ -6,10 +6,11 @@ readings, each with humidity, in either of two views:
 
 - **Maple Valley** — outdoor conditions, fetched from the [Open-Meteo](https://open-meteo.com/)
   public API over plain HTTP. No API key.
-- **An indoor room** — a reading published by an MQTT broker on your own
-  network. The room's name and its two topics come from `secrets.ini`, so the
-  same firmware serves a panel in any room. The broker accepts anonymous
-  connections; there is nothing to authenticate.
+- **An indoor room** — either a local AHT10 on the `I2C-OUT` connector, or a
+  reading published by an MQTT broker on your own network. The room's name and
+  its two topics come from `secrets.ini`, so the same firmware serves a panel in
+  any room. The broker accepts anonymous connections; there is nothing to
+  authenticate.
 
 ## The two views
 
@@ -76,6 +77,27 @@ There is not much room below that. 5% sends byte 232 on a scale where 245 is
 off, so thirteen steps remain, and below roughly 3% the boost driver may not
 light the panel reliably. Nothing reads the backlight back, so the firmware
 cannot tell "very dim" from "off".
+
+## The indoor reading: local sensor or broker
+
+At boot the firmware probes `0x38` on the `I2C-OUT` header (J13: GND, 3V3,
+GPIO15 SDA, GPIO16 SCL).
+
+- **An AHT10 answers.** The indoor row shows that sensor, sampled every ten
+  seconds, and the panel publishes each reading to `mqtt_topic_temp` and
+  `mqtt_topic_hum` as bare decimals. It does not subscribe. The row keeps
+  updating even when the broker is unreachable.
+- **Nothing answers.** The panel subscribes to those two topics instead, which
+  is how a panel with no sensor has always worked.
+
+The serial log says which: `aht10: found at 0x38, publishing <topic>` or
+`aht10: no sensor at 0x38, reading the broker instead`. A sensor that stops
+answering stops the publishes, and the row dims after a minute like any other
+stale reading.
+
+The sensor shares its bus with the touch controller, so a measurement is
+triggered and collected on separate loop passes — the bus is never held while
+the sensor converts, which would starve the display's DMA.
 
 ## Build and flash
 
