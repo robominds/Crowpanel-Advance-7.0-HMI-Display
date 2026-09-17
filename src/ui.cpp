@@ -316,6 +316,12 @@ void buildStatusBar() {
     lv_obj_align(window, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
+// The clock view's text colour, in one place so the whole view stays
+// consistent. Red on black: legible across a room without lighting it up.
+// Staleness dims by opacity rather than recolouring, so a stale reading is a
+// dim version of this.
+lv_color_t clockText() { return lv_palette_main(LV_PALETTE_RED); }
+
 void buildClockView(size_t count) {
     g_clock_view = lv_obj_create(lv_screen_active());
     lv_obj_set_size(g_clock_view, board::LCD_WIDTH, board::LCD_HEIGHT);
@@ -332,7 +338,7 @@ void buildClockView(size_t count) {
 
     g_clock_time = lv_label_create(g_clock_view);
     lv_obj_set_style_text_font(g_clock_time, &clock_font_144, 0);
-    lv_obj_set_style_text_color(g_clock_time, lv_color_white(), 0);
+    lv_obj_set_style_text_color(g_clock_time, clockText(), 0);
     lv_label_set_text(g_clock_time, "--:--");
 
     // Montserrat 48 is the largest font available, and the readings below use
@@ -344,12 +350,12 @@ void buildClockView(size_t count) {
 
     g_clock_ampm = lv_label_create(g_clock_view);
     lv_obj_set_style_text_font(g_clock_ampm, &clock_font_72, 0);
-    lv_obj_set_style_text_color(g_clock_ampm, lv_color_white(), 0);
+    lv_obj_set_style_text_color(g_clock_ampm, clockText(), 0);
     lv_label_set_text(g_clock_ampm, "");
 
     g_clock_date = lv_label_create(g_clock_view);
     lv_obj_set_style_text_font(g_clock_date, &lv_font_montserrat_36, 0);
-    lv_obj_set_style_text_color(g_clock_date, lv_color_white(), 0);
+    lv_obj_set_style_text_color(g_clock_date, clockText(), 0);
     lv_label_set_text(g_clock_date, "");
     lv_obj_align(g_clock_date, LV_ALIGN_TOP_MID, 0, CLOCK_DATE_Y);
 
@@ -365,7 +371,7 @@ void buildClockView(size_t count) {
 
         g_clock_temp[i] = lv_label_create(q);
         lv_obj_set_style_text_font(g_clock_temp[i], &clock_font_144, 0);
-        lv_obj_set_style_text_color(g_clock_temp[i], lv_color_white(), 0);
+        lv_obj_set_style_text_color(g_clock_temp[i], clockText(), 0);
         // Clip rather than wrap. "100.0" at 144 px is a hair wider than half
         // the panel; losing a few pixels off an extreme reading is far better
         // than it silently becoming two lines and wrecking the layout.
@@ -375,13 +381,13 @@ void buildClockView(size_t count) {
 
         g_clock_frac[i] = lv_label_create(q);
         lv_obj_set_style_text_font(g_clock_frac[i], &clock_font_72, 0);
-        lv_obj_set_style_text_color(g_clock_frac[i], lv_color_white(), 0);
+        lv_obj_set_style_text_color(g_clock_frac[i], clockText(), 0);
         lv_label_set_long_mode(g_clock_frac[i], LV_LABEL_LONG_CLIP);
         lv_label_set_text(g_clock_frac[i], "");
 
         g_clock_hum[i] = lv_label_create(q);
         lv_obj_set_style_text_font(g_clock_hum[i], &lv_font_montserrat_28, 0);
-        lv_obj_set_style_text_color(g_clock_hum[i], lv_color_white(), 0);
+        lv_obj_set_style_text_color(g_clock_hum[i], clockText(), 0);
         lv_label_set_text(g_clock_hum[i], "--");
         lv_obj_align(g_clock_hum[i], LV_ALIGN_BOTTOM_MID, 0, -12);
     }

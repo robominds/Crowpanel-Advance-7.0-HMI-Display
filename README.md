@@ -15,7 +15,7 @@ readings, each with humidity, in either of two views:
 
 **Clock**, which is what the panel shows at power-up. The time in large digits
 across the top, the outdoor reading in the lower left and the indoor one in the
-lower right, humidity small beneath each, white on black. No captions: position
+lower right, humidity small beneath each, red on black. No captions: position
 says which is which, in the same order the chart rows are stacked. The time
 comes from the board's own real-time clock, so it is right within seconds of
 power-up, before Wi-Fi has associated.
