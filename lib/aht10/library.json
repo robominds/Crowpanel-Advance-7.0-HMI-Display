@@ -1,0 +1,5 @@
+{
+  "name": "aht10",
+  "version": "1.0.0",
+  "description": "Conversion and validation for the AHT10 temperature and humidity sensor's six-byte frame. Pure C++17, host-testable."
+}
