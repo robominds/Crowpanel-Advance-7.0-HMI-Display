@@ -22,10 +22,21 @@
 
 namespace source_mqtt {
 
-// Binds the channel that incoming readings are written into. The channel must
-// outlive this module; in practice it is allocated once in setup() and never
-// freed.
-void begin(channel::Channel& indoor);
+// Subscribe: the broker owns the indoor reading, as on a panel with no sensor.
+// PublishOnly: this panel owns it, reads it locally and writes it to the same
+// two topics. A publishing panel never subscribes, so it cannot feed itself.
+enum class Mode { Subscribe, PublishOnly };
+
+// Binds the channel that incoming readings are written into, and the role this
+// panel takes. The channel must outlive this module; in practice it is
+// allocated once in setup() and never freed. In PublishOnly the channel is
+// still bound, but only publish() and the connection logic are used.
+void begin(channel::Channel& indoor, Mode mode);
+
+// PublishOnly only: writes one reading to the two configured topics, as bare
+// decimals with one decimal place, QoS 0 and not retained. A no-op while
+// disconnected - nothing is queued, the next sample is ten seconds away.
+void publish(float temperature_c, float humidity_pct);
 
 // Call every loop. Handles connection, reconnection with backoff, and message
 // dispatch. Cheap when connected and idle.

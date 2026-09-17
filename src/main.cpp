@@ -24,6 +24,7 @@
 #include "net.h"
 #include "rtc.h"
 #include "panel_mcu.h"
+#include "source_aht10.h"
 #include "source_mqtt.h"
 #include "source_weather.h"
 #include "touch.h"
@@ -227,8 +228,15 @@ void setup() {
     ota_config.running_version = FW_VERSION;
     ota::begin(ota_config, g_update_overlay);
 
+    // Which role this panel takes is a question for the bus, not a build flag:
+    // a panel with an AHT10 on I2C-OUT shows and publishes its own reading, a
+    // panel without one reads the same topics from the broker.
+    const bool local_sensor = source_aht10::begin();
+
     net::begin();
-    source_mqtt::begin(*g_channels[1]);
+    source_mqtt::begin(*g_channels[1], local_sensor
+                                           ? source_mqtt::Mode::PublishOnly
+                                           : source_mqtt::Mode::Subscribe);
     source_weather::begin(*g_channels[0]);
 
     // Draw the first frame before the backlight comes on, so the panel lights
@@ -255,6 +263,14 @@ void loop() {
     brightness::poll(rtc::hasTime());
     source_mqtt::poll();
     source_weather::poll();
+
+    // One sample feeds the screen and the broker. A failed publish is dropped
+    // rather than queued: the next sample is ten seconds away.
+    float sensor_c = 0.0f, sensor_rh = 0.0f;
+    if (source_aht10::poll(sensor_c, sensor_rh)) {
+        g_channels[1]->update(sensor_c, sensor_rh, millis());
+        source_mqtt::publish(sensor_c, sensor_rh);
+    }
 
     touch_poll();
     pollLongPress();

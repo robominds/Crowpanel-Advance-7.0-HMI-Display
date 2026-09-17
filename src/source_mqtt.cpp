@@ -28,6 +28,7 @@ WiFiClient   g_wifi;
 PubSubClient g_mqtt(g_wifi);
 
 channel::Channel* g_channel = nullptr;
+Mode g_mode = Mode::Subscribe;
 
 float    g_last_hum      = 0.0f;
 bool     g_have_hum      = false;
@@ -71,20 +72,44 @@ void connect() {
         return;
     }
 
-    g_mqtt.subscribe(TOPIC_TEMP);
-    g_mqtt.subscribe(TOPIC_HUM);
     g_retry_ms = RETRY_MIN_MS;
-    Serial.println("mqtt: connected and subscribed");
+    if (g_mode == Mode::Subscribe) {
+        g_mqtt.subscribe(TOPIC_TEMP);
+        g_mqtt.subscribe(TOPIC_HUM);
+        Serial.println("mqtt: connected and subscribed");
+    } else {
+        // No subscription: this panel reads its own sensor, and subscribing to
+        // the topics it writes would only feed its own data back to it.
+        Serial.println("mqtt: connected, publishing only");
+    }
 }
 
 }  // namespace
 
-void begin(channel::Channel& indoor) {
+void begin(channel::Channel& indoor, Mode mode) {
     g_channel = &indoor;
+    g_mode    = mode;
     g_mqtt.setServer(MQTT_HOST, MQTT_PORT);
     g_mqtt.setCallback(onMessage);
     // Payloads are single numbers, so the default 256-byte buffer is ample.
     g_mqtt.setKeepAlive(30);
+}
+
+void publish(float temperature_c, float humidity_pct) {
+    if (g_mode != Mode::PublishOnly || !g_mqtt.connected()) return;
+
+    char value[16];
+    snprintf(value, sizeof value, "%.1f", temperature_c);
+    const bool temp_ok = g_mqtt.publish(TOPIC_TEMP, value);
+    snprintf(value, sizeof value, "%.1f", humidity_pct);
+    const bool hum_ok = g_mqtt.publish(TOPIC_HUM, value);
+
+    if (temp_ok && hum_ok) {
+        Serial.printf("mqtt: published %.1f C, %.1f %%\n", temperature_c,
+                      humidity_pct);
+    } else {
+        Serial.println("mqtt: publish failed");
+    }
 }
 
 void poll() {
