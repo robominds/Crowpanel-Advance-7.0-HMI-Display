@@ -52,11 +52,16 @@ void readFailed(uint32_t now) {
     }
 }
 
+bool readStatus(uint8_t& out) {
+    if (Wire.requestFrom(static_cast<int>(aht10::ADDRESS), 1) != 1) return false;
+    out = static_cast<uint8_t>(Wire.read());
+    return true;
+}
+
 }  // namespace
 
 bool begin() {
-    const uint8_t reset[]       = {0xBA};
-    const uint8_t initialise[]  = {0xE1, 0x08, 0x00};
+    const uint8_t reset[] = {0xBA};
 
     if (!writeCommand(reset, sizeof reset)) {
         Serial.println("aht10: no sensor at 0x38, reading the broker instead");
@@ -64,27 +69,36 @@ bool begin() {
     }
     delay(20);   // datasheet: 20 ms after a soft reset
 
-    if (!writeCommand(initialise, sizeof initialise)) {
+    uint8_t status = 0;
+    if (!readStatus(status)) {
         Serial.println("aht10: no sensor at 0x38, reading the broker instead");
         return false;
     }
-    delay(10);
 
-    if (Wire.requestFrom(static_cast<int>(aht10::ADDRESS), 1) != 1) {
-        Serial.println("aht10: no sensor at 0x38, reading the broker instead");
-        return false;
-    }
-    const uint8_t status = static_cast<uint8_t>(Wire.read());
+    // Only calibrate a part that says it needs it. Modules sold as AHT10 are
+    // often an AHT20 or AHT21 die, which take 0xBE for this command and reject
+    // the AHT10's 0xE1 - the bench sensor answered 0x38 with status 0x18,
+    // already calibrated, while 0xE1 returned a bus error. So: skip the command
+    // when the status bit is set, and try both opcodes when it is not.
     if ((status & aht10::STATUS_CALIBRATED) == 0) {
-        Serial.printf("aht10: 0x38 answered but is not calibrated (status 0x%02X);"
-                      " reading the broker instead\n",
-                      static_cast<unsigned>(status));
-        return false;
+        const uint8_t aht10_init[] = {0xE1, 0x08, 0x00};
+        const uint8_t aht20_init[] = {0xBE, 0x08, 0x00};
+        if (!writeCommand(aht10_init, sizeof aht10_init)) {
+            writeCommand(aht20_init, sizeof aht20_init);
+        }
+        delay(10);
+        if (!readStatus(status) || (status & aht10::STATUS_CALIBRATED) == 0) {
+            Serial.printf("aht10: 0x38 answered but will not calibrate"
+                          " (status 0x%02X); reading the broker instead\n",
+                          static_cast<unsigned>(status));
+            return false;
+        }
     }
 
     g_present     = true;
     g_next_due_ms = millis();
-    Serial.printf("aht10: found at 0x38, publishing %s\n", MQTT_TOPIC_TEMP);
+    Serial.printf("aht10: found at 0x38 (status 0x%02X), publishing %s\n",
+                  static_cast<unsigned>(status), MQTT_TOPIC_TEMP);
     return true;
 }
 
