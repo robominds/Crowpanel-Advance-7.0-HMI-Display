@@ -83,6 +83,7 @@ lv_obj_t* g_clock_date    = nullptr;   // "Saturday 13 September 2026"
 lv_obj_t* g_clock_temp[MAX_ROWS] = {nullptr};   // whole degrees, 144 px
 lv_obj_t* g_clock_frac[MAX_ROWS] = {nullptr};   // ".2", half that
 lv_obj_t* g_clock_hum[MAX_ROWS]  = {nullptr};
+lv_obj_t* g_clock_name[MAX_ROWS] = {nullptr};   // "Maple Valley", bottom of the quadrant
 
 // Vertical budget for the clock view, all of it tight: at 3x, a 48 px label's
 // box is about 200 px tall, and there are two of those to fit above and below
@@ -95,6 +96,11 @@ constexpr int CLOCK_DATE_Y = 185;   // top of the date line
 constexpr int CLOCK_AMPM_GAP = 16;  // between the digits and AM/PM
 constexpr int CLOCK_FRAC_GAP = 4;   // between whole degrees and the tenth
 constexpr int CLOCK_TEMP_Y   = 14;  // top of the reading, within its quadrant
+// The 144 px digit box runs to about 187 px, so the humidity sits just under
+// it rather than against the quadrant's floor, which leaves the bottom band
+// free for the room's name.
+constexpr int CLOCK_HUM_Y    = 188; // humidity, under the digits
+constexpr int CLOCK_NAME_DY  = -8;  // room name, up from the quadrant's floor
 
 // Scratch for one chart redraw. Static because a downsample runs on every new
 // sample and this is the largest chart any row can ask for.
@@ -344,6 +350,9 @@ void repaintClockText() {
         if (g_clock_hum[i] != nullptr) {
             lv_obj_set_style_text_color(g_clock_hum[i], colour, 0);
         }
+        if (g_clock_name[i] != nullptr) {
+            lv_obj_set_style_text_color(g_clock_name[i], colour, 0);
+        }
     }
 }
 
@@ -414,7 +423,17 @@ void buildClockView(size_t count) {
         lv_obj_set_style_text_font(g_clock_hum[i], &lv_font_montserrat_28, 0);
         lv_obj_set_style_text_color(g_clock_hum[i], clockText(), 0);
         lv_label_set_text(g_clock_hum[i], "--");
-        lv_obj_align(g_clock_hum[i], LV_ALIGN_BOTTOM_MID, 0, -12);
+        lv_obj_align(g_clock_hum[i], LV_ALIGN_TOP_MID, 0, CLOCK_HUM_Y);
+
+        // The room's name along the bottom. The chart view has carried these
+        // names from the start; the clock view went without until panels in
+        // three different rooms made "which room is this" a real question.
+        g_clock_name[i] = lv_label_create(q);
+        lv_obj_set_style_text_font(g_clock_name[i], &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(g_clock_name[i], clockText(), 0);
+        lv_label_set_text(g_clock_name[i],
+                          g_rows[i].ch != nullptr ? g_rows[i].ch->name() : "");
+        lv_obj_align(g_clock_name[i], LV_ALIGN_BOTTOM_MID, 0, CLOCK_NAME_DY);
     }
 }
 
@@ -509,12 +528,9 @@ void refresh(uint32_t now_ms) {
 
             lv_label_set_text(row.note, stale ? "stale" : "");
 
-            // The clock view carries the same numbers without captions, and
-            // without a unit suffix: dropping " F" takes the string from six
-            // characters to four, which is worth about a third more height once
-            // it is rendered. The chart view still names
-            // the unit, and at these two ranges a Celsius reading is not going
-            // to be mistaken for a Fahrenheit one.
+            // The clock view carries the same numbers, with the unit set in
+            // the smaller font beside the tenths so the digits keep their
+            // height. The room's name is a separate label along the bottom.
             if (g_clock_temp[i] != nullptr) {
                 snprintf(buf, sizeof(buf), "%.1f", toDisplay(r.temperature_c));
 
@@ -528,13 +544,21 @@ void refresh(uint32_t now_ms) {
                     snprintf(frac, sizeof(frac), "%s", dot);
                     *dot = '\0';
                 }
+                // Label the reading the way the chart view does. Appended
+                // to the tenths so it shares that label's smaller font, and
+                // added before layoutClockTemp() so the pair is centred on its
+                // real width.
+                const size_t flen = strlen(frac);
+                snprintf(frac + flen, sizeof(frac) - flen, " %s",
+                         g_fahrenheit ? "F" : "C");
+
                 lv_label_set_text(g_clock_temp[i], whole);
                 lv_label_set_text(g_clock_frac[i], frac);
                 layoutClockTemp(i, whole, frac);
 
                 snprintf(buf, sizeof(buf), "%.0f%% RH", r.humidity_pct);
                 lv_label_set_text(g_clock_hum[i], buf);
-                lv_obj_align(g_clock_hum[i], LV_ALIGN_BOTTOM_MID, 0, -12);
+                lv_obj_align(g_clock_hum[i], LV_ALIGN_TOP_MID, 0, CLOCK_HUM_Y);
             }
         }
 
