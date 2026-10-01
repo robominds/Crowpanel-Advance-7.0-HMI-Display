@@ -437,7 +437,9 @@ void buildClockView(size_t count) {
         // names from the start; the clock view went without until panels in
         // three different rooms made "which room is this" a real question.
         g_clock_name[i] = lv_label_create(q);
-        lv_obj_set_style_text_font(g_clock_name[i], &lv_font_montserrat_20, 0);
+        // Same size as the humidity line it sits under, so the two read as a
+        // pair rather than a reading and a caption.
+        lv_obj_set_style_text_font(g_clock_name[i], &lv_font_montserrat_28, 0);
         lv_obj_set_style_text_color(g_clock_name[i], clockText(), 0);
         lv_label_set_text(g_clock_name[i],
                           g_rows[i].ch != nullptr ? g_rows[i].ch->name() : "");
