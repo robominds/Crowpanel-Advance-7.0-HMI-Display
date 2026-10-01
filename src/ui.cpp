@@ -90,9 +90,15 @@ lv_obj_t* g_clock_name[MAX_ROWS] = {nullptr};   // "Maple Valley", bottom of the
 // the date. These values were derived from that arithmetic rather than guessed,
 // because the failure mode is silent - the digits clip off the top of the panel
 // and the readings collide with their humidity.
-constexpr int CLOCK_TIME_H = 230;   // the band the time and date occupy
-constexpr int CLOCK_TIME_Y = 70;    // top of the digits' unscaled box
-constexpr int CLOCK_DATE_Y = 185;   // top of the date line
+// The 144 px label's box carries an ascent the digits never fill, which read
+// as dead space above the time. The band, the digits and the date all moved up
+// by 30 px together - together, so the gap between digits and date is
+// unchanged - and the quadrants below gained those 30 px. The room name is
+// anchored to the quadrant floor, so the extra space lands between the
+// humidity and the name, which is where it was wanted.
+constexpr int CLOCK_TIME_H = 200;   // the band the time and date occupy
+constexpr int CLOCK_TIME_Y = 40;    // top of the digits' unscaled box
+constexpr int CLOCK_DATE_Y = 155;   // top of the date line
 constexpr int CLOCK_AMPM_GAP = 16;  // between the digits and AM/PM
 constexpr int CLOCK_FRAC_GAP = 4;   // between whole degrees and the tenth
 constexpr int CLOCK_TEMP_Y   = 14;  // top of the reading, within its quadrant
