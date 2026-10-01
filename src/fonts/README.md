@@ -26,7 +26,7 @@ npx -y lv_font_conv@1.5.3 --font "$SCRIPTS/Montserrat-Medium.ttf" \
 
 npx -y lv_font_conv@1.5.3 --font "$SCRIPTS/Montserrat-Medium.ttf" \
   --size 72 --bpp 4 --format lvgl --no-compress --lv-include lvgl.h \
-  --symbols "0123456789:.- APM" -o src/fonts/clock_font_72.c
+  --symbols "0123456789:.- APMCF" -o src/fonts/clock_font_72.c
 ```
 
 Widen `--symbols` if the view ever needs a character it does not already carry.
@@ -34,8 +34,8 @@ A missing glyph does not fail the build; it simply does not draw.
 
 | | 144 px | 72 px |
 | --- | --- | --- |
-| Used for | time digits, whole degrees | AM/PM, the tenth of a degree |
-| Characters | `0-9 : . -` and space | the same, plus `A P M` |
+| Used for | time digits, whole degrees | AM/PM, the tenth of a degree, the unit letter |
+| Characters | `0-9 : . -` and space | the same, plus `A P M C F` |
 
 Together they cost about 72 KB of flash, taking the firmware from roughly 50%
 to 53% of its partition.
