@@ -96,10 +96,12 @@ constexpr int CLOCK_DATE_Y = 185;   // top of the date line
 constexpr int CLOCK_AMPM_GAP = 16;  // between the digits and AM/PM
 constexpr int CLOCK_FRAC_GAP = 4;   // between whole degrees and the tenth
 constexpr int CLOCK_TEMP_Y   = 14;  // top of the reading, within its quadrant
-// The 144 px digit box runs to about 187 px, so the humidity sits just under
-// it rather than against the quadrant's floor, which leaves the bottom band
-// free for the room's name.
-constexpr int CLOCK_HUM_Y    = 188; // humidity, under the digits
+// The 144 px label's box is about 175 px tall, but its lower third is the
+// font's descent - empty under digits - so a humidity line placed below the box
+// looks stranded and collides with the name along the bottom. Measured on the
+// panel: the digits stop looking like they end at about 140 px, so the humidity
+// goes just under that and the name keeps the floor to itself.
+constexpr int CLOCK_HUM_Y    = 150; // humidity, tucked under the digits
 constexpr int CLOCK_NAME_DY  = -8;  // room name, up from the quadrant's floor
 
 // Scratch for one chart redraw. Static because a downsample runs on every new
